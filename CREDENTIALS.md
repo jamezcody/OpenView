@@ -1,0 +1,51 @@
+# Credentials and configuration
+
+Credential names in this document are identifiers, never credential values.
+
+## No key is required to run OpenView
+
+The browser, Worker, included prepared datasets, base maps, and local fallback imagery require no user API key. The v0.1.1 build contains no non-empty Cesium Ion token, Worker secret binding, committed environment file, FCC credential, or OpenCellID credential.
+
+## Inventory
+
+| Name                   | Used by v0.1.1 runtime | Classification     | Purpose                                          |
+| ---------------------- | ---------------------: | ------------------ | ------------------------------------------------ |
+| `PHOTON_API_URL`       |               Optional | Non-secret setting | Select an operator-managed HTTPS Photon endpoint |
+| `FCC_USERNAME`         |                     No | Account identifier | Separate offline FCC dataset acquisition         |
+| `FCC_API_TOKEN`        |                     No | Secret             | Separate offline FCC dataset acquisition         |
+| `OPENCELLID_API_TOKEN` |                     No | Secret             | Separate offline OpenCellID acquisition          |
+
+The acquisition tools are not included in this release. Prepared-data reload buttons only reread local release manifests; they never contact FCC or OpenCellID acquisition services.
+
+Links to third-party property portals may require those sites' own accounts. OpenView does not request, receive, or store those logins.
+
+## Windows installer storage
+
+The optional advanced installer page stores offline-refresh credentials as current-user vault entries using Generic Credentials in Windows Credential Manager:
+
+- `OpenView/FCC`
+- `OpenView/OpenCellID`
+
+Secret inputs are masked. Values are not written to the installation directory, `settings.json`, logs, command-line arguments, browser storage, release archives, or Git.
+
+The optional non-secret `PHOTON_API_URL` setting is stored under `%LOCALAPPDATA%\OpenView\config\settings.json`. It must be an absolute HTTPS URL with no user information, query string, or fragment. Do not put a credential in any part of this URL.
+
+GitHub and Cloudflare authentication are maintainer concerns, never installer inputs. Use their official credential managers or CLI authentication; the OpenView installer never requests or stores them.
+
+## Local development
+
+Keep every local `.env*` and `.dev.vars*` file ignored. The committed `.dev.vars.example` deliberately contains no value. Never place a secret in a `NEXT_PUBLIC_*`, `VITE_*`, or other client-visible variable.
+
+Run the value-suppressing audit before a commit:
+
+```powershell
+npm run security:audit
+npm run build
+npm run security:audit:generated
+```
+
+## Rotation and removal
+
+Use Windows Credential Manager or the installer's **Remove saved credentials** action to remove saved OpenView vault entries. Rerun the installer and explicitly enter a replacement to update an entry.
+
+If a real credential is exposed, revoke or rotate it with the provider immediately, remove it from the working tree and Git history, and repeat the audit before publication. Do not reproduce the value in an issue, commit message, screenshot, or incident note.

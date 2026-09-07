@@ -1,0 +1,79 @@
+name: Reproduce release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      published_data_available:
+        description: Confirm the checksum-pinned v0.1.1 data asset is already published
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: inputs.published_data_available
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            runtime/package-lock.json
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.312
+      - run: npm ci --no-audit --no-fund
+      - run: npm run security:audit
+      - name: Record the checked-in release identities
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force work/release-reproduction | Out-Null
+          Copy-Item -LiteralPath release/release-manifest.json -Destination work/release-reproduction/original-manifest.json
+      - run: npm run data:install
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm run runtime:build
+      - run: npm run data:build
+      - name: Require byte-identical archive reproduction
+        shell: pwsh
+        run: |
+          $expected = Get-Content -Raw -LiteralPath work/release-reproduction/original-manifest.json | ConvertFrom-Json
+          $actual = Get-Content -Raw -LiteralPath release/release-manifest.json | ConvertFrom-Json
+          $fields = @('name', 'url', 'sha256', 'compressedBytes', 'fileCount', 'uncompressedBytes', 'maximumCompressedBytes', 'maximumFileCount', 'maximumUncompressedBytes')
+          foreach ($archiveName in @('dataArchive', 'runtimeArchive')) {
+            foreach ($field in $fields) {
+              if ([string]$expected.$archiveName.$field -cne [string]$actual.$archiveName.$field) {
+                throw "$archiveName.$field did not reproduce the checked-in release manifest."
+              }
+            }
+          }
+      - name: Build the Windows setup executable
+        shell: pwsh
+        run: ./installer/build.ps1
+      - name: Verify the setup and sidecars
+        shell: pwsh
+        run: ./artifacts/v0.1.1/OpenView-Setup-v0.1.1.exe --self-test --sidecar-dir ./artifacts/v0.1.1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openview-v0.1.1-windows-x64
+          path: |
+            artifacts/v0.1.1/OpenView-Setup-v0.1.1.exe
+            artifacts/v0.1.1/openview-data-v0.1.1.tar.gz
+            artifacts/v0.1.1/openview-runtime-win-x64-v0.1.1.tar.gz
+            artifacts/v0.1.1/release-manifest.json
+            artifacts/v0.1.1/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

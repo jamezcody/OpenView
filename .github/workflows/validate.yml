@@ -1,0 +1,59 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      test_published_data:
+        description: Test the already-published, checksum-pinned data asset
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix runtime --omit=dev --ignore-scripts --no-audit --no-fund
+      - run: npm run security:audit
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm run security:audit:generated
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.312
+      - name: Compile the Windows setup source
+        shell: pwsh
+        run: dotnet build installer/OpenView.Setup/OpenView.Setup.csproj --configuration Release
+
+  full-data:
+    if: github.event_name == 'workflow_dispatch' && inputs.test_published_data
+    needs: source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run data:install
+      - run: npm test

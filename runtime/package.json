@@ -1,0 +1,11 @@
+{
+  "name": "openview-runtime-win-x64",
+  "version": "0.1.1",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "wrangler": "4.92.0"
+  }
+}

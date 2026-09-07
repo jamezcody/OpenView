@@ -1,0 +1,2 @@
+# OpenView runs without configuration. This optional value is not a secret.
+PHOTON_API_URL=

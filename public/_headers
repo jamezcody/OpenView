@@ -1,0 +1,36 @@
+/radio/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/cells/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/cells/versions/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+/radio/versions/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+/coverage/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/coverage/fcc-*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+/parks/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/parks/parks-*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+/search/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/search/search-*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+/camping/latest.json
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+/camping/camping-*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
