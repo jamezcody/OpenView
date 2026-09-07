@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.4",
-  "tag": "v0.1.4",
+  "version": "0.2.0",
+  "tag": "v0.2.0",
   "repository": "jamezcody/OpenView",
   "dataArchive": {
-    "name": "openview-data-v0.1.4.tar.gz",
-    "url": "https://github.com/jamezcody/OpenView/releases/download/v0.1.4/openview-data-v0.1.4.tar.gz",
+    "name": "openview-data-v0.2.0.tar.gz",
+    "url": "https://github.com/jamezcody/OpenView/releases/download/v0.2.0/openview-data-v0.2.0.tar.gz",
     "sha256": "fc07df707d3c1f3aa12ff9a808d1a90929e07f1a435ee355e392c4f3af110ce8",
     "compressedBytes": 167170511,
     "fileCount": 62193,
@@ -15,12 +15,12 @@
     "maximumUncompressedBytes": 2147483648
   },
   "runtimeArchive": {
-    "name": "openview-runtime-win-x64-v0.1.4.tar.gz",
-    "url": "https://github.com/jamezcody/OpenView/releases/download/v0.1.4/openview-runtime-win-x64-v0.1.4.tar.gz",
-    "sha256": "acd7ba4da82fcc89d46f21fea35a4e35df2e87f85b8e7c3588a7f4422d330c53",
-    "compressedBytes": 63512404,
-    "fileCount": 2079,
-    "uncompressedBytes": 187810833,
+    "name": "openview-runtime-win-x64-v0.2.0.tar.gz",
+    "url": "https://github.com/jamezcody/OpenView/releases/download/v0.2.0/openview-runtime-win-x64-v0.2.0.tar.gz",
+    "sha256": "7accd88be1cafc0aeac27d942d4ce603263f1c8ce26bbcf8e4d6305b5db3bd1c",
+    "compressedBytes": 63892208,
+    "fileCount": 2115,
+    "uncompressedBytes": 192675431,
     "maximumCompressedBytes": 268435456,
     "maximumFileCount": 5000,
     "maximumUncompressedBytes": 536870912

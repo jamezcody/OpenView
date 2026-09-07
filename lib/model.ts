@@ -2,6 +2,7 @@ export type CameraView = {
   lat: number;
   lon: number;
   height: number;
+  zoom?: number;
   pitch?: number;
   heading?: number;
 };
@@ -37,6 +38,12 @@ export type Track = {
   heading: number | null;
   observedAt: number;
   kind: 'aircraft' | 'ships';
+  source?: string;
+  sourceUrl?: string;
+  trueHeading?: number | null;
+  timestampBasis?: 'receiver' | 'received';
+  destination?: string;
+  vesselType?: number;
   registration?: string;
   country?: string;
 };
@@ -49,6 +56,7 @@ export type Snapshot<T> = {
   cached?: boolean;
   coverage?: string;
   omitted?: number;
+  warning?: string;
 };
 export type ParcelProperties = {
   id: string;

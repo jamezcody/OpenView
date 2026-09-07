@@ -436,6 +436,16 @@ h2 {
   color: #d3dfe7;
   margin-left: 7px;
 }
+.camera-readout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px 18px;
+  margin-left: 12px;
+}
+.camera-readout > span {
+  white-space: nowrap;
+}
 .cesium-viewer-bottom {
   bottom: 46px !important;
   left: 8px !important;
@@ -1213,7 +1223,6 @@ h2 {
     width: 80%;
   }
 }
-
 .radio-controls {
   border-top: 1px solid #29414d;
   margin: 24px 0;
@@ -1416,7 +1425,6 @@ h2 {
     animation: none;
   }
 }
-
 .camera-settings {
   margin-top: 24px;
   padding-top: 24px;
@@ -2634,4 +2642,204 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.space-details .detail-row dt {
+  white-space: normal;
+  flex: 0 1 48%;
+}
+.space-details .detail-row dd {
+  min-width: 0;
+  flex: 1 1 48%;
+}
+.space-source-details {
+  margin: 14px 0;
+}
+.space-source-details summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: #c3ed97;
+}
+.space-details .source-link {
+  display: block;
+  margin: 8px 0;
+}
+/* Local OSM data controls follow the existing map panel. */
+.osm-controls fieldset {
+  border: 0;
+  margin: 1rem 0;
+  padding: 0;
+  min-width: 0;
+}
+.osm-controls legend {
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+.osm-controls label:not(.toggle-row) {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.8rem 0;
+  font-size: 0.875rem;
+}
+.osm-controls input,
+.osm-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem;
+  color: inherit;
+  background: #13202b;
+  border: 1px solid #425363;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+.osm-controls button {
+  margin: 0.25rem 0.3rem 0.25rem 0;
+  white-space: normal;
+  height: auto;
+  min-height: 2.4rem;
+}
+.osm-controls details {
+  margin: 0.65rem 0;
+}
+.osm-controls .osm-preview,
+.osm-dataset {
+  border: 1px solid #425363;
+  border-radius: 0.65rem;
+  padding: 0.8rem;
+  margin-top: 0.8rem;
+}
+.osm-controls p {
+  margin: 0.55rem 0;
+  line-height: 1.5;
+}
+.osm-dataset h3 {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.osm-job,
+.osm-path {
+  overflow-wrap: anywhere;
+}
+.osm-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.osm-actions .toggle-row {
+  width: 100%;
+}
+.osm-controls progress {
+  width: 100%;
+  accent-color: #83dfac;
+}
+.osm-feature-group {
+  border-top: 1px solid #425363;
+  padding-top: 0.5rem;
+}
+.osm-feature-group summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+.osm-feature-group .toggle-row {
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 0.65rem 0;
+}
+.osm-feature-group .toggle-row span {
+  min-width: 0;
+}
+.osm-feature-group small {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #9eb7c8;
+  margin-top: 0.2rem;
+}
+.osm-feature-popup {
+  margin: 0;
+  position: absolute;
+  z-index: 35;
+  left: auto;
+  right: 1rem;
+  top: 5rem;
+  width: min(390px, calc(100% - 2rem));
+  max-height: min(650px, calc(100% - 7rem));
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid #557080;
+  border-radius: 0.8rem;
+  background: #10212ef5;
+  color: #e5eff4;
+  box-shadow: 0 10px 40px #0006;
+  font-size: 0.85rem;
+}
+.osm-popup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+.osm-popup-heading h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.osm-popup-heading button {
+  min-width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+}
+.osm-feature-popup h3 {
+  margin-top: 0.6rem;
+  font-weight: 600;
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.osm-feature-popup p {
+  margin: 0.6rem 0;
+  line-height: 1.5;
+}
+.osm-feature-popup a {
+  color: #a9dfc6;
+  text-decoration: underline;
+}
+.osm-feature-popup label {
+  display: grid;
+  gap: 0.4rem;
+}
+.osm-feature-popup select {
+  width: 100%;
+  background: #13202b;
+  border: 1px solid #557080;
+  border-radius: 0.4rem;
+  padding: 0.5rem;
+}
+.osm-tag-list {
+  margin: 0.8rem 0;
+}
+.osm-tag-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 38%) minmax(0, 62%);
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #42536380;
+}
+.osm-tag-list dt {
+  color: #a7c1d1;
+}
+.osm-tag-list dt,
+.osm-tag-list dd {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.osm-symbol-key {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.osm-symbol-key > span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }

@@ -1,18 +1,21 @@
 import {
   REGIONS,
-  type OMM,
   type Track,
-  type Snapshot,
   type Bounds,
   type ParcelFeature,
   type ParcelProperties,
 } from './model';
-import { BodyTooLargeError, boundedJson } from './bounded-fetch';
+import { BodyTooLargeError, boundedJson, readBounded } from './bounded-fetch';
+import { createSpaceFeed, SpaceFeedError } from './space-feed';
+import { spaceCache } from './space-cache';
+import { SATNOGS_TLE_URL } from './space-fallback';
+import { SPACE_REFRESH_INTERVAL } from './space-data';
 export class FeedError extends Error {
   constructor(
     message: string,
     public status = 502,
     public retryAfter = 60,
+    public retryAt?: number,
   ) {
     super(message);
   }
@@ -106,7 +109,9 @@ export async function cached<T>(
           : new FeedError(
               'The provider could not be reached. Please try again later.',
             );
-      const cooldown = key.startsWith('orbits') ? 7200 : err.retryAfter;
+      const cooldown = key.startsWith('orbits')
+        ? SPACE_REFRESH_INTERVAL / 1000
+        : err.retryAfter;
       const item: Stored = {
         expires: Date.now() + cooldown * 1000,
         value: null,
@@ -178,47 +183,68 @@ export async function upstream<T = unknown>(
     throw new FeedError('The provider returned an unreadable response.');
   }
 }
-export async function satellites(): Promise<Snapshot<OMM>> {
-  return cached('orbits-stations', 7200, async () => {
-    const url =
-      'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=JSON';
-    const data = await upstream<unknown>(url, {}, 2 * 1024 * 1024);
-    if (!Array.isArray(data))
-      throw new FeedError('The orbital source did not return a catalog.');
-    const items = data
-      .filter(
-        (v: OMM) =>
-          v.OBJECT_NAME &&
-          Number.isFinite(Number(v.NORAD_CAT_ID)) &&
-          [
-            'MEAN_MOTION',
-            'ECCENTRICITY',
-            'INCLINATION',
-            'RA_OF_ASC_NODE',
-            'ARG_OF_PERICENTER',
-            'MEAN_ANOMALY',
-            'BSTAR',
-            'MEAN_MOTION_DOT',
-            'MEAN_MOTION_DDOT',
-          ].every((k) => Number.isFinite(v[k])) &&
-          Number.isFinite(Date.parse(v.EPOCH)) &&
-          v.MEAN_MOTION > 0 &&
-          v.ECCENTRICITY >= 0 &&
-          v.ECCENTRICITY < 1,
-      )
-      .slice(0, 150);
-    if (!items.length)
-      throw new FeedError('No valid orbital elements were returned.');
-    const fetchedAt = Date.now();
-    return {
-      items,
-      fetchedAt,
-      nextRefreshAt: fetchedAt + 7200000,
-      source: 'CelesTrak · space stations and associated objects',
-      sourceUrl: 'https://celestrak.org/NORAD/elements/',
-      coverage: 'Earth-orbiting station catalog',
-    };
-  });
+export const readSpaceCsv = async (url: string) => {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      redirect: 'manual',
+      headers: {
+        // CelesTrak's bulk CSV files are served as application/octet-stream.
+        // Accept the transport type, then validate the bounded CSV contents.
+        Accept: '*/*',
+        'User-Agent': 'OpenView/0.2.0',
+        'Accept-Encoding': 'gzip',
+      },
+      signal: AbortSignal.timeout(45000),
+    });
+  } catch {
+    throw new FeedError(
+      'CelesTrak is unavailable.',
+      502,
+      SPACE_REFRESH_INTERVAL / 1000,
+    );
+  }
+  if (response.status !== 200) {
+    const wait = response.headers.get('Retry-After');
+    const seconds = wait
+      ? Number(wait) || Math.ceil((Date.parse(wait) - Date.now()) / 1000)
+      : SPACE_REFRESH_INTERVAL / 1000;
+    await response.body?.cancel();
+    throw new FeedError(
+      `CelesTrak returned HTTP ${response.status}.`,
+      response.status === 429 ? 429 : 502,
+      Math.max(
+        SPACE_REFRESH_INTERVAL / 1000,
+        Number.isFinite(seconds) ? seconds : SPACE_REFRESH_INTERVAL / 1000,
+      ),
+    );
+  }
+  return new TextDecoder().decode(
+    await readBounded(response, 16 * 1024 * 1024),
+  );
+};
+const spaceFeed = createSpaceFeed(readSpaceCsv, Date.now, {
+  cache: spaceCache,
+  readFallback: () => upstream(SATNOGS_TLE_URL),
+});
+export async function satellites() {
+  try {
+    return await spaceFeed();
+  } catch (error) {
+    if (error instanceof SpaceFeedError)
+      throw new FeedError(
+        error.message,
+        502,
+        Math.max(1, Math.ceil((error.retryAt - Date.now()) / 1000)),
+        error.retryAt,
+      );
+    if (error instanceof FeedError) throw error;
+    throw new FeedError(
+      'The space catalog could not be validated.',
+      502,
+      SPACE_REFRESH_INTERVAL / 1000,
+    );
+  }
 }
 const finite = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v);
@@ -332,7 +358,7 @@ export function normalizeShips(
   });
 }
 export async function ships() {
-  return cached('ships-baltic', 60, async () => {
+  return cached('ships-baltic-10m', 600, async () => {
     const h = { 'Digitraffic-User': 'OpenView/0.1.1' };
     const [data, metadata] = await Promise.all([
       upstream<{
@@ -365,7 +391,7 @@ export async function ships() {
     return {
       items,
       fetchedAt,
-      nextRefreshAt: fetchedAt + 60000,
+      nextRefreshAt: fetchedAt + 600000,
       source: 'Fintraffic / Digitraffic · CC BY 4.0',
       sourceUrl: 'https://www.digitraffic.fi/en/marine-traffic/',
       coverage: 'Finnish coastal waters and Baltic AIS receiver coverage',

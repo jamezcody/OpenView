@@ -58,7 +58,8 @@ if (
   runtimePackageMetadata.version !== metadata.version ||
   runtimePackageMetadata.engines?.node !== packageMetadata.engines.node ||
   runtimePackageMetadata.dependencies?.wrangler !==
-    packageMetadata.devDependencies?.wrangler
+    packageMetadata.devDependencies?.wrangler ||
+  runtimePackageMetadata.dependencies?.ws !== packageMetadata.dependencies?.ws
 )
   throw new Error(
     'The application, runtime, and release manifest versions are inconsistent.',
@@ -68,6 +69,9 @@ const requiredBuildFiles = [
   'dist/server/index.js',
   'dist/server/wrangler.json',
   'dist/client/favicon.svg',
+  'dist/local/server.mjs',
+  'dist/local/ship-service.mjs',
+  'dist/local/ais-credential.ps1',
 ];
 for (const path of requiredBuildFiles)
   await readFile(resolve(root, path)).catch(() => {
@@ -169,6 +173,7 @@ try {
   const dataRoots = new Set(metadata.dataDirectories);
   async function collectRuntimeFiles() {
     return [
+      ...(await collectRegularFiles(resolve(root, 'dist/local'), 'dist/local')),
       ...(await collectRegularFiles(
         resolve(root, 'dist/client'),
         'dist/client',
@@ -200,10 +205,17 @@ try {
   }
   const files = await collectRuntimeFiles();
   const requiredArchiveFiles = [
+    'dist/local/server.mjs',
+    'dist/local/ship-service.mjs',
+    'dist/local/ship-model.mjs',
+    'dist/local/ship-policy.mjs',
+    'dist/local/ship-credential.mjs',
+    'dist/local/ais-credential.ps1',
     'dist/server/index.js',
     'dist/server/wrangler.json',
     'dist/client/favicon.svg',
     'node_modules/wrangler/bin/wrangler.js',
+    'node_modules/ws/package.json',
     'node_modules/@cloudflare/workerd-windows-64/bin/workerd.exe',
   ];
   for (const path of requiredArchiveFiles)

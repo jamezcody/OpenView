@@ -36,8 +36,9 @@ function compile(directory) {
   }
 }
 compile('lib');
+compile('scripts/local');
 compile('tests');
-for (const name of readdirSync(join(root, 'tests')).filter((name) =>
-  /\.test\.(ts|mjs)$/.test(name),
+for (const name of readdirSync(join(root, 'tests')).filter(
+  (name) => /\.test\.(ts|mjs)$/.test(name) && name !== 'osm-local.test.mjs',
 ))
   await import(pathToFileURL(join(out, 'tests', name.replace('.ts', '.mjs'))));

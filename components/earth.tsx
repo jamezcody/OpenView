@@ -9,6 +9,10 @@ import {
   type RefObject,
 } from 'react';
 import type * as Cesium from 'cesium';
+import { useSpaceObjects } from '@/hooks/use-space-objects';
+import { OsmFeaturePopup } from '@/components/osm-feature-popup';
+import { useOsmImagery } from '@/hooks/use-osm-imagery';
+import type { OsmSelection } from '@/lib/osm-model';
 import { useCampingMarkers } from '@/hooks/use-camping-markers';
 import type { CampMarker } from '@/lib/camping-model';
 import { RADIO_COLORS, type RadioMarker } from '@/lib/radio-model';
@@ -60,6 +64,8 @@ export type EarthHandle = {
   focus: (id: string) => void;
 };
 type Props = {
+  osm?: OsmSelection | null;
+  onOsmStatus?: (message: string) => void;
   campingMarkers?: CampMarker[];
   campingVisible?: boolean;
   onCampingError?: (message: string) => void;
@@ -324,6 +330,8 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     stateParks = null,
     onParkStatus,
     onParkPick,
+    osm = null,
+    onOsmStatus,
   },
   ref,
 ) {
@@ -333,7 +341,6 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     viewCallback = useRef(onView),
     pickCallback = useRef(onPick),
     offset = useRef(offsetMinutes),
-    spaceVisibility = useRef(spaceVisible),
     parcelVisibility = useRef(parcelsVisible),
     addressVisibility = useRef(addressesVisible),
     coverageAlpha = useRef(coverageOpacity),
@@ -350,8 +357,7 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     parkPick = useRef(onParkPick);
   parkStatus.current = onParkStatus;
   parkPick.current = onParkPick;
-  const orbitSource = useRef<Cesium.CustomDataSource | null>(null),
-    trackSource = useRef<Cesium.CustomDataSource | null>(null),
+  const trackSource = useRef<Cesium.CustomDataSource | null>(null),
     parcelSource = useRef<Cesium.CustomDataSource | null>(null),
     addressSource = useRef<Cesium.CustomDataSource | null>(null),
     pathEntity = useRef<Cesium.Entity | null>(null);
@@ -359,7 +365,6 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     viewCallback.current = onView;
     pickCallback.current = onPick;
     offset.current = offsetMinutes;
-    spaceVisibility.current = spaceVisible;
     parcelVisibility.current = parcelsVisible;
     addressVisibility.current = addressesVisible;
     coverageAlpha.current = coverageOpacity;
@@ -380,6 +385,16 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     [ready, setReady] = useState(0),
     [mapWarning, setMapWarning] = useState(''),
     [terrainWarning, setTerrainWarning] = useState('');
+  const spacePoints = useSpaceObjects({
+    api,
+    viewer,
+    ready,
+    orbits,
+    visible: spaceVisible,
+    offset: offsetMinutes,
+    selectedId: selected?.kind === 'satellite' ? selected.id : undefined,
+    report: setMapWarning,
+  });
   useEffect(() => {
     const C = api.current,
       v = viewer.current;
@@ -419,6 +434,9 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
       }
     };
   }, [ready, searchLocation]);
+  const osmInteraction = useOsmImagery(osm, ready, api, viewer, onOsmStatus);
+  const osmInteractionRef = useRef(osmInteraction);
+  osmInteractionRef.current = osmInteraction;
   useParkImagery(
     'national',
     nationalParks,
@@ -552,70 +570,65 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
         }
       : null;
   }
-  useImperativeHandle(
-    ref,
-    () => ({
-      flyTo,
-      bounds,
-      home: () => flyTo(HOME),
-      focus: (id) => {
-        const C = api.current,
-          v = viewer.current;
-        const entity =
-          orbitSource.current?.entities.getById(id) ||
-          trackSource.current?.entities.getById(id);
-        if (C && v && entity) {
-          const p = entity.position?.getValue(v.clock.currentTime);
-          if (p) {
-            const geo = C.Cartographic.fromCartesian(p);
-            flyTo({
-              lon: C.Math.toDegrees(geo.longitude),
-              lat: C.Math.toDegrees(geo.latitude),
-              height: Math.max(geo.height + 1500000, 300000),
-            });
-          }
-        }
-      },
-      zoom: (d) => {
-        flight.current++;
-        viewer.current?.camera.cancelFlight();
-        const v = viewer.current;
-        if (v) {
-          const C = api.current!;
-          const ray = v.camera.getPickRay(
-            new C.Cartesian2(
-              v.canvas.clientWidth / 2,
-              v.canvas.clientHeight / 2,
-            ),
-          );
-          const point = ray ? v.scene.globe.pick(ray, v.scene) : undefined;
-          const range = point
-            ? C.Cartesian3.distance(v.camera.positionWC, point)
-            : v.camera.positionCartographic.height;
-          v.camera.zoomIn(
-            Math.max(1, Math.min(range * 0.35, Math.max(0, range - 15))) * d,
-          );
-          v.scene.requestRender();
-        }
-      },
-      north: () => {
-        flight.current++;
-        const v = viewer.current;
-        if (v)
-          v.camera.flyTo({
-            destination: v.camera.position,
-            orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
-            duration: 0.8,
+  useImperativeHandle(ref, () => ({
+    flyTo,
+    bounds,
+    home: () => flyTo(HOME),
+    focus: (id) => {
+      const C = api.current,
+        v = viewer.current;
+      const entity = trackSource.current?.entities.getById(id);
+      if (C && v) {
+        const point = spacePoints.current.get(id);
+        const p = point?.show
+          ? point.position
+          : entity?.position?.getValue(v.clock.currentTime);
+        if (p) {
+          const geo = C.Cartographic.fromCartesian(p);
+          flyTo({
+            lon: C.Math.toDegrees(geo.longitude),
+            lat: C.Math.toDegrees(geo.latitude),
+            height: Math.max(geo.height + 1500000, 300000),
           });
-      },
-    }),
-    [],
-  );
+        }
+      }
+    },
+    zoom: (d) => {
+      flight.current++;
+      viewer.current?.camera.cancelFlight();
+      const v = viewer.current;
+      if (v) {
+        const C = api.current!;
+        const ray = v.camera.getPickRay(
+          new C.Cartesian2(v.canvas.clientWidth / 2, v.canvas.clientHeight / 2),
+        );
+        const point = ray ? v.scene.globe.pick(ray, v.scene) : undefined;
+        const range = point
+          ? C.Cartesian3.distance(v.camera.positionWC, point)
+          : v.camera.positionCartographic.height;
+        v.camera.zoomIn(
+          Math.max(1, Math.min(range * 0.35, Math.max(0, range - 15))) * d,
+        );
+        v.scene.requestRender();
+      }
+    },
+    north: () => {
+      flight.current++;
+      const v = viewer.current;
+      if (v)
+        v.camera.flyTo({
+          destination: v.camera.position,
+          orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+          duration: 0.8,
+        });
+    },
+  }));
   useEffect(() => {
     let disposed = false;
     let timer: ReturnType<typeof setInterval> | undefined;
     let releaseControls: (() => void) | undefined,
       releaseFlightInput: (() => void) | undefined;
+    let viewResize: ResizeObserver | undefined;
     void (async () => {
       try {
         (window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
@@ -709,6 +722,24 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
           const p = point
             ? C.Cartographic.fromCartesian(point)
             : v.camera.positionCartographic;
+          // Equivalent 256-pixel Web Mercator zoom at the view center.
+          // Cesium selects tile detail independently, so this is an estimate.
+          const metersPerPixel = point
+            ? v.camera.getPixelSize(
+                new C.BoundingSphere(point, 0),
+                v.scene.drawingBufferWidth,
+                v.scene.drawingBufferHeight,
+              )
+            : NaN;
+          const zoom = Math.log2(
+            (2 *
+              Math.PI *
+              C.Ellipsoid.WGS84.maximumRadius *
+              Math.cos(
+                Math.min(Math.abs(p.latitude), C.Math.toRadians(85.051129)),
+              )) /
+              (256 * metersPerPixel),
+          );
           viewCallback.current({
             lat: C.Math.toDegrees(p.latitude),
             lon: C.Math.toDegrees(p.longitude),
@@ -719,10 +750,17 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
             ),
             heading: C.Math.toDegrees(v.camera.heading),
             pitch: C.Math.toDegrees(v.camera.pitch),
+            zoom: Number.isFinite(zoom) ? Math.max(0, zoom) : undefined,
           });
         };
         v.camera.changed.addEventListener(report);
         v.camera.moveEnd.addEventListener(report);
+        viewResize = new ResizeObserver(() => {
+          if (disposed || v.isDestroyed()) return;
+          v.resize();
+          report();
+        });
+        viewResize.observe(v.canvas);
         report();
         let lastAnchor = '';
         v.scene.postRender.addEventListener(() => {
@@ -770,7 +808,11 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
           (click: { position: Cesium.Cartesian2 }) => {
             const picked = v.scene.pick(click.position);
             const entity = picked?.id as Cesium.Entity | undefined;
-            const props = entity?.properties?.getValue(v.clock.currentTime);
+            const props =
+              entity?.properties?.getValue(v.clock.currentTime) ||
+              (picked?.id?.openviewKind === 'satellite'
+                ? picked.id
+                : undefined);
             const ray = v.camera.getPickRay(click.position),
               point = ray ? v.scene.globe.pick(ray, v.scene) : undefined,
               cart = point ? C.Cartographic.fromCartesian(point) : undefined;
@@ -785,6 +827,9 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
                     }
                   : undefined,
               });
+            if (props?.openviewKind) osmInteractionRef.current.closePopup();
+            else if (cart)
+              osmInteractionRef.current.pickAt.current?.(click.position);
             // Parks are imagery, so they cannot intercept existing entity hits.
             // Resolve the prepared park polygon only after existing pick handling.
             if (cart && parkMayPick(props?.openviewKind))
@@ -818,6 +863,7 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     return () => {
       disposed = true;
       clearInterval(timer);
+      viewResize?.disconnect();
       releaseControls?.();
       releaseFlightInput?.();
       if (viewer.current && !viewer.current.isDestroyed())
@@ -1028,76 +1074,6 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
     const C = api.current,
       v = viewer.current;
     if (!ready || !C || !v) return;
-    if (orbitSource.current) v.dataSources.remove(orbitSource.current, true);
-    const source = new C.CustomDataSource('Predicted satellite positions');
-    orbitSource.current = source;
-    source.show = spaceVisibility.current;
-    void v.dataSources
-      .add(source)
-      .catch(() =>
-        setMapWarning(
-          'A map overlay could not be initialized. Reload to retry.',
-        ),
-      );
-    for (const omm of orbits) {
-      if (Math.abs(Date.now() - epochTime(omm)) > 14 * 86400000) continue;
-      let sat;
-      try {
-        sat = makeSatellite(omm);
-      } catch {
-        continue;
-      }
-      const id = String(omm.NORAD_CAT_ID);
-      source.entities.add({
-        id,
-        properties: { openviewKind: 'satellite', openviewId: id },
-        position: new C.CallbackPositionProperty((_time, result) => {
-          const p = orbitPosition(
-            sat,
-            new Date(Date.now() + offset.current * 60000),
-          );
-          return p
-            ? C.Cartesian3.fromDegrees(
-                p.lon,
-                p.lat,
-                p.altitude,
-                C.Ellipsoid.WGS84,
-                result,
-              )
-            : undefined;
-        }, false),
-        point: {
-          pixelSize: id === selected?.id ? 12 : 7,
-          color: C.Color.fromCssColorString('#c3ed97'),
-          outlineColor: C.Color.fromCssColorString('#263a25'),
-          outlineWidth: 2,
-        },
-        label: {
-          text: omm.OBJECT_NAME,
-          show: id === selected?.id,
-          font: '13px sans-serif',
-          fillColor: C.Color.WHITE,
-          showBackground: true,
-          backgroundColor: C.Color.fromCssColorString('#101820db'),
-          pixelOffset: new C.Cartesian2(13, -12),
-          horizontalOrigin: C.HorizontalOrigin.LEFT,
-        },
-      });
-    }
-    v.scene.requestRender();
-    return () => {
-      if (!v.isDestroyed()) v.dataSources.remove(source, true);
-      if (orbitSource.current === source) orbitSource.current = null;
-    };
-  }, [ready, orbits, selected?.id]);
-  useEffect(() => {
-    if (orbitSource.current) orbitSource.current.show = spaceVisible;
-    viewer.current?.scene.requestRender();
-  }, [spaceVisible]);
-  useEffect(() => {
-    const C = api.current,
-      v = viewer.current;
-    if (!ready || !C || !v) return;
     const draw = () => {
       if (pathEntity.current) v.entities.remove(pathEntity.current);
       pathEntity.current = null;
@@ -1107,7 +1083,8 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
         !orbitPaths ||
         selected?.kind !== 'satellite' ||
         !omm ||
-        Math.abs(Date.now() - epochTime(omm)) > 14 * 86400000
+        Math.abs(Date.now() + offsetMinutes * 60000 - epochTime(omm)) >
+          14 * 86400000
       )
         return;
       let sat;
@@ -1116,7 +1093,7 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
       } catch {
         return;
       }
-      const period = Math.min(180, 1440 / omm.MEAN_MOTION);
+      const period = Math.min(10080, 1440 / omm.MEAN_MOTION);
       const positions = [];
       for (let i = 0; i <= 180; i++) {
         const p = orbitPosition(
@@ -1181,16 +1158,19 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
       source.entities.add({
         id,
         properties: { openviewKind: track.kind, openviewId: track.id },
-        position: new C.CallbackPositionProperty((_t, result) => {
-          const p = predictedTrack(track, Date.now());
-          return C.Cartesian3.fromDegrees(
-            p.lon,
-            p.lat,
-            p.altitude,
-            C.Ellipsoid.WGS84,
-            result,
-          );
-        }, false),
+        position:
+          track.kind === 'ships'
+            ? C.Cartesian3.fromDegrees(track.lon, track.lat, track.altitude)
+            : new C.CallbackPositionProperty((_t, result) => {
+                const p = predictedTrack(track, Date.now());
+                return C.Cartesian3.fromDegrees(
+                  p.lon,
+                  p.lat,
+                  p.altitude,
+                  C.Ellipsoid.WGS84,
+                  result,
+                );
+              }, false),
         billboard: {
           image: track.kind === 'aircraft' ? plane : ship,
           width: track.kind === 'aircraft' ? 23 : 16,
@@ -1365,6 +1345,20 @@ const Earth = forwardRef<EarthHandle, Props>(function Earth(
   return (
     <>
       <div className="earth-canvas" ref={container} />
+      {osmInteraction.popup && osm && (
+        <OsmFeaturePopup
+          key={
+            osmInteraction.popup.loading
+              ? 'loading'
+              : osmInteraction.popup.features
+                  .map((feature) => feature.sourceId || feature.name)
+                  .join('/')
+          }
+          result={osmInteraction.popup}
+          prepared={osm.prepared}
+          onClose={osmInteraction.closePopup}
+        />
+      )}
       {!ready && !error && (
         <div className="earth-loading">
           <span className="loading-ring" />

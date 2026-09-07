@@ -580,9 +580,20 @@ internal static partial class InstallerEngine
         var pointers = new HashSet<string>(StringComparer.Ordinal);
         var requiredRuntime = new HashSet<string>(StringComparer.Ordinal)
         {
+            "dist/local/server.mjs",
+            "dist/local/ship-service.mjs",
+            "dist/local/ship-model.mjs",
+            "dist/local/ship-policy.mjs",
+            "dist/local/ship-credential.mjs",
+            "dist/local/ais-credential.ps1",
+            "dist/local/osm-manager.mjs",
+            "dist/local/osm-io.mjs",
+            "dist/local/osm-tools.mjs",
+            "dist/local/osm-profile.mjs",
             "dist/server/wrangler.json",
             "dist/client/favicon.svg",
             "node_modules/wrangler/bin/wrangler.js",
+            "node_modules/ws/package.json",
         };
         var probePath = "dist/client/" + manifest.RuntimeProbe.Path.TrimStart('/');
         var sawProbe = false;

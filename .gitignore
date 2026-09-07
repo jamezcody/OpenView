@@ -65,3 +65,5 @@ next-env.d.ts
 /.openview-data-backup-*/
 /.openview-data-staging-*/
 *.tsbuildinfo
+
+/.npm-cache/

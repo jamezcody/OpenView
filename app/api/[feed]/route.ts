@@ -57,7 +57,10 @@ export async function GET(
         ? e
         : new FeedError('Unable to retrieve this data source.');
     return Response.json(
-      { error: err.message, retryAt: Date.now() + err.retryAfter * 1000 },
+      {
+        error: err.message,
+        retryAt: err.retryAt ?? Date.now() + err.retryAfter * 1000,
+      },
       {
         status: err.status,
         headers: {

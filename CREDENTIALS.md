@@ -2,18 +2,21 @@
 
 Credential names in this document are identifiers, never credential values.
 
+v0.2.0 supports `AISSTREAM_API_KEY`, required for AISStream's ten-minute ship snapshots but optional for OpenView itself. Create your own key at [AISStream Account](https://aisstream.io/account), then check **Set AISStream key** in setup/settings and enter it in the masked field. Windows installs read it from `OpenView/AISStream` in Windows Credential Manager. The local Node collector alone uses the key; it is not passed to Vite, Wrangler, browser assets or runtime archives. Restart the server after changing it. `AISSTREAM_ENABLED=false` disables this provider in source runs. Digitraffic remains available without a key. See [Ship configuration](SHIPS.md).
+
 ## No key is required to run OpenView
 
 The browser, Worker, included prepared datasets, base maps, and local fallback imagery require no user API key. The release contains no non-empty Cesium Ion token, Worker secret binding, committed environment file, FCC credential, or OpenCellID credential.
 
 ## Inventory
 
-| Name                   | Used by runtime | Classification     | Purpose                                          |
-| ---------------------- | --------------: | ------------------ | ------------------------------------------------ |
-| `PHOTON_API_URL`       |        Optional | Non-secret setting | Select an operator-managed HTTPS Photon endpoint |
-| `FCC_USERNAME`         |              No | Account identifier | Separate offline FCC dataset acquisition         |
-| `FCC_API_TOKEN`        |              No | Secret             | Separate offline FCC dataset acquisition         |
-| `OPENCELLID_API_TOKEN` |              No | Secret             | Separate offline OpenCellID acquisition          |
+| Name                   |             Used by runtime | Classification     | Purpose                                                           |
+| ---------------------- | --------------------------: | ------------------ | ----------------------------------------------------------------- |
+| `PHOTON_API_URL`       |                    Optional | Non-secret setting | Select an operator-managed HTTPS Photon endpoint                  |
+| `AISSTREAM_API_KEY`    | Required for AISStream only | Secret             | Local ten-minute AISStream collection; not needed for Digitraffic |
+| `FCC_USERNAME`         |                          No | Account identifier | Separate offline FCC dataset acquisition                          |
+| `FCC_API_TOKEN`        |                          No | Secret             | Separate offline FCC dataset acquisition                          |
+| `OPENCELLID_API_TOKEN` |                          No | Secret             | Separate offline OpenCellID acquisition                           |
 
 The acquisition tools are not included in this release. Prepared-data reload buttons only reread local release manifests; they never contact FCC or OpenCellID acquisition services.
 
@@ -21,10 +24,11 @@ Links to third-party property portals may require those sites' own accounts. Ope
 
 ## Windows installer storage
 
-The optional advanced installer page stores offline-refresh credentials as current-user vault entries using Generic Credentials in Windows Credential Manager:
+The optional advanced installer page stores optional AISStream runtime and offline-refresh credentials as current-user vault entries using Generic Credentials in Windows Credential Manager:
 
 - `OpenView/FCC`
 - `OpenView/OpenCellID`
+- `OpenView/AISStream` (optional runtime ship collector)
 
 Secret inputs are masked. Values are not written to the installation directory, `settings.json`, logs, command-line arguments, browser storage, release archives, or Git.
 

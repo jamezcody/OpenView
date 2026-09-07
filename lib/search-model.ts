@@ -1,3 +1,4 @@
+import { isSpaceObject, SPACE_LABELS } from './space-data';
 import type { AddressPoint, LandParcelSnapshot } from './land-model';
 import type { OMM, Snapshot, Track } from './model';
 import type { RadioCategory } from './radio-model';
@@ -319,12 +320,12 @@ export function liveSearchItems({
   parcels?: LandParcelSnapshot | null;
 }): SearchResult[] {
   const out: SearchResult[] = [];
-  for (const o of orbits?.items || [])
+  for (const o of (orbits?.items || []).filter(isSpaceObject))
     out.push({
       id: `satellite:${o.NORAD_CAT_ID}`,
       kind: 'satellite',
       name: o.OBJECT_NAME,
-      detail: `NORAD ${o.NORAD_CAT_ID} · elements ${o.EPOCH}`,
+      detail: `${SPACE_LABELS[o.objectType]} · NORAD ${o.NORAD_CAT_ID} · elements ${o.EPOCH}`,
       terms: `${o.NORAD_CAT_ID} ${o.OBJECT_NAME === 'ISS (ZARYA)' ? 'International Space Station ISS' : ''}`,
       lat: 0,
       lon: 0,
@@ -345,8 +346,8 @@ export function liveSearchItems({
         lat: t.lat,
         lon: t.lon,
         height: Math.max(6000, t.altitude + 12000),
-        source: snapshot!.source,
-        sourceUrl: snapshot!.sourceUrl,
+        source: t.source || snapshot!.source,
+        sourceUrl: t.sourceUrl || snapshot!.sourceUrl,
         target: { type: 'track', id: t.id, kind: t.kind },
         observedAt: t.observedAt,
       });

@@ -70,7 +70,26 @@ import {
   predictedTrack,
 } from '@/lib/orbits';
 import { LAYERS, type LayerId } from '@/lib/map-layers';
-
+import { SpaceDetails } from '@/components/space-details';
+import { useOsm } from '@/hooks/use-osm';
+import { OsmControls } from '@/components/osm-controls';
+import {
+  DEFAULT_SPACE_TYPES,
+  SPACE_TYPES,
+  SPACE_LABELS,
+  SPACE_CACHE_KEY,
+  isSpaceObject,
+  spaceRefreshAt,
+  visibleSpaceObjects,
+  type SpaceType,
+  type SpaceObject,
+} from '@/lib/space-data';
+import {
+  readSpaceSnapshot,
+  saveSpaceSnapshot,
+  readSpaceRetry,
+  saveSpaceRetry,
+} from '@/lib/space-storage';
 const PLACES = [
   {
     name: 'Raleigh, North Carolina',
@@ -128,6 +147,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 export default function Home() {
+  const osm = useOsm();
   const globe = useRef<EarthHandle>(null),
     [view, setView] = useState<CameraView>({
       lat: 20,
@@ -142,8 +162,10 @@ export default function Home() {
   const [orbits, setOrbits] = useState<Snapshot<OMM> | null>(null),
     [air, setAir] = useState<Snapshot<Track> | null>(null),
     [sea, setSea] = useState<Snapshot<Track> | null>(null);
-  const [spaceVisible, setSpaceVisible] = useState(true),
-    [paths, setPaths] = useState(true),
+  const [spaceTypes, setSpaceTypes] =
+    useState<Record<SpaceType, boolean>>(DEFAULT_SPACE_TYPES);
+  const [spaceVisible, setSpaceVisible] = useState(false),
+    [paths, setPaths] = useState(false),
     [airVisible, setAirVisible] = useState(false),
     [seaVisible, setSeaVisible] = useState(false),
     [live, setLive] = useState(false);
@@ -187,22 +209,17 @@ export default function Home() {
     } catch {}
     if (window.innerWidth < 640) setOpen(false);
     try {
-      const saved = JSON.parse(
-        localStorage.getItem('openview-orbits-v1') || 'null',
+      // Only preferences belong in localStorage; the catalog uses IndexedDB.
+      localStorage.removeItem('openview-orbits-v1');
+      const preferences = JSON.parse(
+        localStorage.getItem(SPACE_CACHE_KEY) || 'null',
       );
       if (
-        saved &&
-        Array.isArray(saved.items) &&
-        saved.items.length <= 150 &&
-        Number.isFinite(saved.fetchedAt) &&
-        saved.items.every(
-          (o: OMM) =>
-            o.OBJECT_NAME &&
-            Number.isFinite(o.MEAN_MOTION) &&
-            Number.isFinite(epochTime(o)),
-        )
+        preferences &&
+        typeof preferences.payload === 'boolean' &&
+        typeof preferences['rocket-body'] === 'boolean'
       )
-        setOrbits(saved);
+        setSpaceTypes(preferences);
     } catch {}
     let timer: ReturnType<typeof setInterval> | undefined;
     const updateClock = () => setNow(Date.now());
@@ -243,8 +260,18 @@ export default function Home() {
       const data = body as Record<string, unknown>;
       if (!response.ok) {
         const retryAt = data.retryAt;
-        if (typeof retryAt === 'number')
+        if (typeof retryAt === 'number' && Number.isFinite(retryAt)) {
+          retryRef.current = { ...retryRef.current, [feed]: retryAt };
           setRetryAt((t) => ({ ...t, [feed]: retryAt }));
+          if (feed === 'orbits')
+            saveSpaceRetry({
+              retryAt,
+              error:
+                typeof data.error === 'string'
+                  ? data.error
+                  : 'The source is unavailable.',
+            });
+        }
         throw new Error(
           typeof data.error === 'string'
             ? data.error
@@ -252,29 +279,49 @@ export default function Home() {
         );
       }
       if (feed === 'orbits') {
-        const snapshot = body as Snapshot<OMM>;
+        const raw = body as Snapshot<SpaceObject>;
+        if (
+          !Array.isArray(raw.items) ||
+          !Number.isFinite(raw.fetchedAt) ||
+          !Number.isFinite(raw.nextRefreshAt)
+        )
+          throw Error('The space catalog has an unexpected format.');
+        const snapshot = {
+          ...raw,
+          nextRefreshAt: spaceRefreshAt(raw),
+          items: raw.items.filter(isSpaceObject),
+        };
+        if (!snapshot.items.length)
+          throw Error('No valid space objects were returned.');
         setOrbits(snapshot);
-        setSpaceVisible(true);
-        try {
-          localStorage.setItem('openview-orbits-v1', JSON.stringify(snapshot));
-        } catch {}
-        setSelected({
-          kind: 'satellite',
-          id: String(
-            snapshot.items.find((o) => Number(o.NORAD_CAT_ID) === 25544)
-              ?.NORAD_CAT_ID ?? snapshot.items[0]?.NORAD_CAT_ID,
-          ),
-        });
+        saveSpaceRetry(null);
+        retryRef.current = { ...retryRef.current, orbits: 0 };
+        setRetryAt((t) => ({ ...t, orbits: 0 }));
+        setErrors((e) => ({ ...e, orbits: snapshot.warning }));
+        void saveSpaceSnapshot(snapshot).catch(() => {});
       }
       if (feed === 'aircraft') setAir(body as Snapshot<Track>);
-      if (feed === 'ships') setSea(body as Snapshot<Track>);
-
+      if (feed === 'ships') {
+        const snapshot = body as Snapshot<Track>;
+        setSea(snapshot);
+        setErrors((e) => ({ ...e, ships: snapshot.warning }));
+        retryRef.current = {
+          ...retryRef.current,
+          ships: snapshot.nextRefreshAt,
+        };
+        setRetryAt((t) => ({ ...t, ships: snapshot.nextRefreshAt }));
+      }
       setNotice(
         data.cached === true
           ? 'Showing the latest cached source data.'
           : `${feed === 'orbits' ? 'Orbital elements' : feed === 'ships' ? 'Ship reports' : 'Aircraft reports'} updated.`,
       );
     } catch (e) {
+      if (feed === 'ships' && !controller.signal.aborted) {
+        const next = Math.max(Date.now() + 600000, retryRef.current.ships || 0);
+        retryRef.current = { ...retryRef.current, ships: next };
+        setRetryAt((t) => ({ ...t, ships: next }));
+      }
       if (!controller.signal.aborted)
         setErrors((p) => ({
           ...p,
@@ -305,14 +352,32 @@ export default function Home() {
           if (!document.hidden) void load('aircraft');
         }, 15000),
       );
-    if (seaVisible)
-      timers.push(
-        setInterval(() => {
-          if (!document.hidden) void load('ships');
-        }, 60000),
-      );
     return () => timers.forEach(clearInterval);
-  }, [live, airVisible, seaVisible, load]);
+  }, [live, airVisible, load]);
+  useEffect(() => {
+    if (!live || !seaVisible) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (document.hidden) return;
+      const due = Math.max(
+        sea?.nextRefreshAt || Date.now() + 600000,
+        retryAt.ships || 0,
+      );
+      timer = setTimeout(
+        () => {
+          void load('ships');
+        },
+        Math.max(0, due - Date.now()),
+      );
+    };
+    schedule();
+    document.addEventListener('visibilitychange', schedule);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', schedule);
+    };
+  }, [live, seaVisible, sea, retryAt.ships, load]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(''), 5000);
@@ -320,7 +385,6 @@ export default function Home() {
   }, [notice]);
   const navigate = useCallback((p: CameraView) => {
     globe.current?.flyTo(p);
-
     if (window.innerWidth < 640) setOpen(false);
   }, []);
   useEffect(() => {
@@ -395,9 +459,13 @@ export default function Home() {
     ],
     [airVisible, seaVisible, air, sea],
   );
+  const shownOrbits = useMemo(
+    () => visibleSpaceObjects(orbits?.items || [], spaceTypes),
+    [orbits, spaceTypes],
+  );
   const selectedOrbit =
     selected?.kind === 'satellite'
-      ? orbits?.items.find((o) => String(o.NORAD_CAT_ID) === selected.id)
+      ? shownOrbits.find((o) => String(o.NORAD_CAT_ID) === selected.id)
       : undefined;
   const sat = useMemo(() => {
     try {
@@ -584,12 +652,14 @@ export default function Home() {
       id: 'orbits',
       name: 'Space objects',
       detail:
-        'CelesTrak space stations and associated objects; not the entire satellite population.',
+        'Public payloads and rocket bodies from CelesTrak. Debris and unknown types are excluded.',
       count: orbits?.items.length || 0,
       loaded: !!orbits,
       busy: !!busy.orbits,
       error: errors.orbits,
-      disabled: Math.max(retryAt.orbits || 0, orbits?.nextRefreshAt || 0) > now,
+      disabled:
+        Math.max(retryAt.orbits || 0, orbits ? spaceRefreshAt(orbits) : 0) >
+        now,
       refresh: () => void load('orbits'),
     },
     {
@@ -608,7 +678,7 @@ export default function Home() {
       id: 'ships',
       name: 'Ships',
       detail:
-        'Finnish coast and Baltic AIS reports. Worldwide tracking is not connected.',
+        'Sampled AIS reports every ten minutes. Search covers the loaded snapshot; ship positions stay fixed.',
       count: sea?.items.length || 0,
       loaded: !!sea,
       busy: !!busy.ships,
@@ -649,6 +719,8 @@ export default function Home() {
       const object = orbits?.items.find(
         (o) => String(o.NORAD_CAT_ID) === target.id,
       );
+      if (!isSpaceObject(object)) return;
+      setSpaceTypes((types) => ({ ...types, [object.objectType]: true }));
       setSpaceVisible(true);
       setSelected({ kind: 'satellite', id: target.id });
       setOffset(0);
@@ -816,6 +888,70 @@ export default function Home() {
       {busy[feed] ? 'Updating…' : label}
     </Button>
   );
+  useEffect(() => {
+    let active = true;
+    void readSpaceSnapshot()
+      .catch(() => null)
+      .then((saved) => {
+        if (!active) return;
+        if (saved?.items.length) {
+          setOrbits(saved);
+          setErrors((e) => ({ ...e, orbits: saved.warning }));
+        }
+        const retry = readSpaceRetry();
+        if (retry) {
+          retryRef.current = { ...retryRef.current, orbits: retry.retryAt };
+          setRetryAt((t) => ({ ...t, orbits: retry.retryAt }));
+          setErrors((e) => ({ ...e, orbits: retry.error }));
+          return;
+        }
+        // Restore saved data for search; acquire fresh elements only when the
+        // user enables space objects or explicitly requests a source update.
+      });
+    return () => {
+      active = false;
+    };
+  }, [load]);
+  const nextSpaceCheck = Math.max(
+    retryAt.orbits || 0,
+    orbits ? spaceRefreshAt(orbits) : 0,
+  );
+  useEffect(() => {
+    if (!spaceVisible || !nextSpaceCheck) return;
+    const check = () => {
+      if (!document.hidden && Date.now() >= nextSpaceCheck) void load('orbits');
+    };
+    const timer = setTimeout(
+      check,
+      Math.max(1000, Math.min(2147483647, nextSpaceCheck - Date.now())),
+    );
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [spaceVisible, nextSpaceCheck, load]);
+  const changeSpaceType = (type: SpaceType, enabled: boolean) => {
+    const next = {
+      ...(spaceVisible ? spaceTypes : { payload: false, 'rocket-body': false }),
+      [type]: enabled,
+    };
+    setSpaceTypes(next);
+    try {
+      localStorage.setItem(SPACE_CACHE_KEY, JSON.stringify(next));
+    } catch {}
+    if (selected?.kind === 'satellite') {
+      const object = orbits?.items.find(
+        (o) => String(o.NORAD_CAT_ID) === selected.id,
+      );
+      if (isSpaceObject(object) && object.objectType === type && !enabled)
+        setSelected(null);
+    }
+    if (enabled) {
+      setSpaceVisible(true);
+      if (!orbits) void load('orbits');
+    }
+  };
   const toggleTraffic = (kind: 'aircraft' | 'ships', on: boolean) => {
     if (kind === 'aircraft') setAirVisible(on);
     else setSeaVisible(on);
@@ -837,7 +973,7 @@ export default function Home() {
     {
       id: 'space',
       label: 'Space objects',
-      description: 'Predicted satellite positions',
+      description: 'Payloads and rocket bodies · predicted positions',
       symbol: 'dot',
       color: '#c3ed97',
       enabled: spaceVisible,
@@ -850,7 +986,10 @@ export default function Home() {
         (busy.orbits
           ? 'Loading orbital elements…'
           : orbits
-            ? orbits.items.length + ' objects loaded'
+            ? shownOrbits.length +
+              ' enabled / ' +
+              orbits.items.length +
+              ' loaded'
             : 'Update orbital data below to load objects.'),
       error: !!errors.orbits,
     },
@@ -883,7 +1022,7 @@ export default function Home() {
     {
       id: 'ships',
       label: 'Ships',
-      description: 'Finnish coast & Baltic AIS',
+      description: 'AIS snapshots · every 10 minutes',
       symbol: 'diamond',
       color: '#ffbd86',
       enabled: seaVisible,
@@ -891,7 +1030,7 @@ export default function Home() {
       status:
         errors.ships ||
         (busy.ships
-          ? 'Loading ship reports…'
+          ? 'Collecting a ship snapshot (up to 30 seconds)…'
           : sea
             ? sea.items.length + ' reports · ' + ageLabel(sea.fetchedAt, now)
             : 'No ship reports loaded.'),
@@ -1065,7 +1204,41 @@ export default function Home() {
             layer={layer}
             setLayer={setLayer}
             overlays={overlayControls}
+            osmLayers={osm.selection?.layers}
           >
+            <OsmControls
+              osm={osm}
+              onShow={(bounds) => {
+                const [west, south, east, north] = bounds;
+                globe.current?.flyTo({
+                  lon: (west + east) / 2,
+                  lat: (south + north) / 2,
+                  height: Math.max(
+                    1800,
+                    Math.min(
+                      19000000,
+                      Math.max(east - west, north - south) * 120000,
+                    ),
+                  ),
+                });
+              }}
+            />
+            <details className="panel-detail" open>
+              <summary>Space object types</summary>
+              {SPACE_TYPES.map((type) => (
+                <Toggle
+                  key={type}
+                  label={SPACE_LABELS[type]}
+                  detail={`${orbits?.items.filter((o) => isSpaceObject(o) && o.objectType === type).length || 0} loaded`}
+                  checked={spaceVisible && spaceTypes[type]}
+                  onChange={(enabled) => changeSpaceType(type, enabled)}
+                />
+              ))}
+              <p className="source-meta">
+                Debris and unknown object types are excluded. Non-operational
+                satellites remain payloads.
+              </p>
+            </details>
             <details className="panel-detail">
               <summary>
                 <RefreshCw size={17} />
@@ -1074,13 +1247,14 @@ export default function Home() {
               <section className="data-feed">
                 <h3>Space objects</h3>
                 <p>
-                  Space stations and associated objects. Positions are
-                  calculated locally between manual updates.
+                  Public satellites, payloads and rocket bodies. Positions are
+                  calculated locally. Orbital data refreshes at most once every
+                  24 hours.
                 </p>
                 {refresh(
                   'orbits',
                   'Update orbital data',
-                  !!orbits && now < orbits.nextRefreshAt,
+                  !!orbits && now < spaceRefreshAt(orbits),
                 )}
                 {feedMessage('orbits')}
                 <p className="source-meta">
@@ -1092,7 +1266,7 @@ export default function Home() {
                 </p>
                 {orbits && (
                   <p className="source-meta">
-                    Next source check {utc(orbits.nextRefreshAt)}
+                    Next source check {utc(spaceRefreshAt(orbits))}
                   </p>
                 )}
                 <a
@@ -1130,31 +1304,37 @@ export default function Home() {
               <section className="data-feed">
                 <h3>Ships</h3>
                 <p>
-                  Finnish coast and Baltic AIS. Worldwide ship tracking is not
-                  connected.
+                  {sea?.coverage ||
+                    'AISStream snapshots when configured, with Digitraffic regional fallback.'}{' '}
+                  Positions stay fixed between ten-minute updates.
                 </p>
                 {refresh('ships', 'Update ship reports')}
                 {feedMessage('ships')}
                 {sea && (
                   <p className="source-meta">
-                    {sea.items.length} reports · retrieved{' '}
-                    {ageLabel(sea.fetchedAt, now)}. Reports older than 24 hours
-                    omitted.
+                    {sea.items.length} reports ·{' '}
+                    {sea.fetchedAt
+                      ? `retrieved ${ageLabel(sea.fetchedAt, now)}`
+                      : 'awaiting first snapshot'}
+                    . Reports older than 24 hours omitted. Next collection{' '}
+                    {utc(sea.nextRefreshAt)}.
+                    {!!sea.omitted &&
+                      ` ${sea.omitted.toLocaleString()} additional reports omitted.`}
                   </p>
                 )}
                 <a
                   className="source-link"
-                  href="https://www.digitraffic.fi/en/marine-traffic/"
+                  href={sea?.sourceUrl || 'https://aisstream.io/'}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Fintraffic / Digitraffic · CC BY 4.0{' '}
+                  {sea?.source || 'AISStream / Digitraffic'}{' '}
                   <ExternalLink size={12} />
                 </a>
               </section>
               <Toggle
                 label="Live traffic updates"
-                detail="Aircraft every 15s · ships every 60s"
+                detail="Aircraft every 15s · ships every 10 minutes"
                 checked={live}
                 onChange={setLive}
               />
@@ -1263,11 +1443,13 @@ export default function Home() {
         </aside>
         <section className="world" aria-label="Interactive 3D Earth">
           <Earth
+            osm={osm.selection}
+            onOsmStatus={osm.setRenderStatus}
             ref={globe}
             searchLocation={searchLocation}
             onView={setView}
             onPick={selectObject}
-            orbits={orbits?.items}
+            orbits={shownOrbits}
             spaceVisible={spaceVisible}
             tracks={tracks}
             parcels={land.parcels.data}
@@ -1432,37 +1614,14 @@ export default function Home() {
                     {offset === 0 ? 'Predicted position' : 'Orbit simulation'} ·
                     SGP4
                   </span>
-                  <dl>
-                    <Row
-                      label="Catalog"
-                      value={`NORAD ${selectedOrbit.NORAD_CAT_ID}`}
-                    />
-                    <Row
-                      label="Altitude"
-                      value={
-                        satPosition
-                          ? `${(satPosition.altitude / 1000).toFixed(1)} km`
-                          : 'Not propagatable'
-                      }
-                    />
-                    <Row
-                      label="Inclination"
-                      value={`${Number(selectedOrbit.INCLINATION).toFixed(2)}°`}
-                    />
-                    <Row
-                      label="Orbital period"
-                      value={`${(1440 / selectedOrbit.MEAN_MOTION).toFixed(1)} min`}
-                    />
-                    <Row
-                      label="Element epoch"
-                      value={utc(epochTime(selectedOrbit))}
-                    />
-                    <Row
-                      label="Elements age"
-                      value={ageLabel(epochTime(selectedOrbit), now)}
-                    />
-                  </dl>
-                  {Math.abs(now - epochTime(selectedOrbit)) > 3 * 86400000 && (
+                  <SpaceDetails
+                    object={selectedOrbit}
+                    position={satPosition}
+                    now={now}
+                    offset={offset}
+                  />
+                  {Math.abs(now + offset * 60000 - epochTime(selectedOrbit)) >
+                    3 * 86400000 && (
                     <p className="feed-error">
                       Older elements reduce prediction accuracy. Objects over 14
                       days from epoch are hidden.
@@ -1488,13 +1647,17 @@ export default function Home() {
                 <>
                   <span className="detail-status traffic">
                     <i />
-                    {selectedTrack.speed === null ||
-                    selectedTrack.heading === null
-                      ? 'Reported position · motion unavailable'
-                      : now - selectedTrack.observedAt >
-                          (selectedTrack.kind === 'aircraft' ? 60000 : 120000)
-                        ? 'Older report · estimate frozen'
-                        : 'Motion estimated from last report'}
+                    {selectedTrack.kind === 'ships'
+                      ? now - selectedTrack.observedAt > 600000
+                        ? 'Older report · fixed position'
+                        : 'Reported position · fixed until next snapshot'
+                      : selectedTrack.speed === null ||
+                          selectedTrack.heading === null
+                        ? 'Reported position · motion unavailable'
+                        : now - selectedTrack.observedAt >
+                            (selectedTrack.kind === 'aircraft' ? 60000 : 120000)
+                          ? 'Older report · estimate frozen'
+                          : 'Motion estimated from last report'}
                   </span>
                   <dl>
                     <Row
@@ -1507,6 +1670,26 @@ export default function Home() {
                       label="Last report"
                       value={utc(selectedTrack.observedAt)}
                     />
+                    {selectedTrack.kind === 'ships' && (
+                      <>
+                        <Row
+                          label="Source"
+                          value={selectedTrack.source || sea?.source || 'AIS'}
+                        />
+                        {selectedTrack.timestampBasis === 'received' && (
+                          <Row
+                            label="Timestamp basis"
+                            value="Collector receipt time; source time unavailable"
+                          />
+                        )}
+                        {selectedTrack.destination && (
+                          <Row
+                            label="Reported destination"
+                            value={selectedTrack.destination}
+                          />
+                        )}
+                      </>
+                    )}
                     <Row
                       label="Report age"
                       value={ageLabel(selectedTrack.observedAt, now)}
@@ -1655,14 +1838,22 @@ export default function Home() {
               <em>/</em> {Math.abs(view.lon).toFixed(3)}°{' '}
               {view.lon >= 0 ? 'E' : 'W'}
             </span>
-            <span>
-              CAMERA{' '}
-              <strong>
-                {(view.height / 1000).toLocaleString(undefined, {
-                  maximumFractionDigits: 1,
-                })}{' '}
-                km
-              </strong>
+            <span className="camera-readout">
+              <span>
+                CAMERA{' '}
+                <strong>
+                  {(view.height / 1000).toLocaleString(undefined, {
+                    maximumFractionDigits: 1,
+                  })}{' '}
+                  km
+                </strong>
+              </span>
+              <span title="Approximate map zoom at the center of the view. Feature detail also depends on terrain, tilt and tile loading.">
+                ZOOM{' '}
+                <strong>
+                  {view.zoom === undefined ? '—' : `≈${view.zoom.toFixed(1)}`}
+                </strong>
+              </span>
             </span>
           </div>
         </section>

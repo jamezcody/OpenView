@@ -22,6 +22,7 @@ const scanRoot = resolve(positionalArguments[0] ?? projectRoot);
 const ignoredDirectories = new Set([
   '.git',
   '.next',
+  '.npm-cache',
   '.vinext',
   '.wrangler',
   'artifacts',

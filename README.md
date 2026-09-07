@@ -4,22 +4,42 @@
 
 OpenView is an interactive 3D Earth explorer for satellite, street, and topographic maps with parks, campsites, radio sites, estimated cell locations, FCC coverage, addresses, parcels, satellites, aircraft, and ships.
 
-Version 0.1.4 makes the desktop browser shortcut open a direct local URL instead of invoking the unsigned launcher. It preserves the OpenView branding, configurable ports, installer auto-close, and previous map fixes. See [release notes](RELEASE_v0.1.4.md).
+Version **0.2.0** adds richer space-object details and controls, AISStream ship snapshots, and optional local OpenStreetMap datasets. It preserves configurable ports, desktop shortcuts, automatic setup completion, and the earlier map fixes. See the [v0.2.0 release notes](RELEASE_v0.2.0.md).
+
+- **Space:** separate satellites/payloads and rocket bodies, searchable catalog details, cached daily catalog refreshes, and background-worker orbit calculations.
+- **Ships:** one local collector takes a 30-second AISStream sample at most every ten minutes. Points stay at reported coordinates between snapshots. A personal AISStream key is required for this provider; Digitraffic remains the no-key regional fallback. See [Ship snapshots](SHIPS.md).
+- **OSM:** download a Geofabrik region or planet file, or import your own `.osm.pbf`; prepare it locally, enable a dataset, and choose feature categories. Buildings and smaller features appear as you zoom in. See [OSM data](OSM_DATA.md).
 
 ## Install on Windows
 
-Download `OpenView-Setup-v0.1.4.exe` and `SHA256SUMS.txt` from the [v0.1.4 release](https://github.com/jamezcody/OpenView/releases/tag/v0.1.4).
+Download `OpenView-Setup-v0.2.0.exe` and `SHA256SUMS.txt` from the [v0.2.0 release](https://github.com/jamezcody/OpenView/releases/tag/v0.2.0).
 
-The setup executable includes its own .NET runtime, runs per user without elevation, and verifies checksum-pinned Windows x64 runtime and data packages. Put both release archives beside setup for an offline install; when a sidecar is absent, setup downloads that exact asset. The installed app uses the system's Node.js runtime. OpenView itself needs no API key. An advanced page can save optional offline data-refresh credentials in Windows Credential Manager for the current Windows user; those credentials are never put in the site, browser, logs, command line, or a plaintext file.
+The setup executable includes its own .NET runtime, runs per user without elevation, and verifies checksum-pinned Windows x64 runtime and data packages. Put both release archives beside setup for an offline install; when a sidecar is absent, setup downloads that exact asset. The installed app uses the system's Node.js runtime. A key is required only if you want AISStream ship coverage. Setup stores your own key in Windows Credential Manager for the current Windows user, never in the browser, logs, command line, release archives, or a plaintext settings file.
 
 Requirements:
 
 - 64-bit Windows 10 or 11
 - Node.js 22.13 or newer
-- Internet access only when a release archive is not beside setup
+- Internet access for missing installation archives, online maps/search/live feeds, and optional OSM downloads/tools
 - 5 GB of free disk space recommended (setup keeps a verified backup during upgrades)
+- Optional OSM preparation needs additional disk space and RAM; start with a small region. Preparation downloads checksum-pinned Planetiler and a private Java 21 runtime on Windows. A planet-wide import is not included or benchmarked; see [OSM requirements](OSM_DATA.md).
 
-The v0.1.4 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it.
+The v0.2.0 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it. Smart App Control may block the installer/controller; the direct browser shortcut does not remove that separate signing requirement.
+
+1. Install Node.js 22.13 or newer, then download and verify setup.
+2. Run setup, choose the installation folder and server port, and optionally select either desktop shortcut.
+3. For AISStream coverage, follow the key setup below. Otherwise leave its replacement box unchecked.
+4. Click **Install / repair**. Successful setup closes automatically; the launch option opens the controller.
+5. In the controller, start OpenView and open the browser. Enable the layers you want; overlays start off.
+
+### Set up the AISStream API key
+
+1. Sign in to [AISStream Account](https://aisstream.io/account) and create your own API key. Keep it private; new keys are shown once.
+2. In setup or the controller's **Settings**, check **Set AISStream key** and paste it into the masked **AISStream API key** field.
+3. Click **Install / repair** during installation, or **Save configuration** in settings. An unchecked replacement box preserves a previously saved key.
+4. Stop and start the OpenView server after changing the key. Enable **Ships** and **Live traffic updates** for automatic snapshots. The first sample can take about 30 seconds.
+
+The key is required for AISStream, not for the rest of OpenView. Without it, ship coverage is limited to Digitraffic's regional feed. Snapshots are sampled reports, not a complete global fleet or continuously moving live positions. See [Ship configuration and limits](SHIPS.md) and [AISStream documentation](https://aisstream.io/documentation).
 
 ### Choose the server port
 
@@ -27,7 +47,7 @@ Enter **Server port** before clicking **Install / repair**. The default is `8787
 
 Setup accepts whole numbers from `1` to `65535`, except ports blocked by web browsers. If the selected port is unavailable, the controller explains how to choose another.
 
-To upgrade from v0.1.1, v0.1.2, or v0.1.3, close the OpenView controller, run the downloaded v0.1.4 setup executable, keep the existing installation folder, choose a port, and click **Install / repair**. Existing settings without a port use `8787`; saved optional credentials are preserved unless their replacement boxes are checked.
+To upgrade from a v0.1.x release, close the OpenView controller, run the downloaded v0.2.0 setup executable, keep the existing installation folder, choose a port, and click **Install / repair**. Existing settings without a port use `8787`; saved credentials are preserved unless their replacement boxes are checked. Your separate OSM library is retained.
 
 To change the port later, open **Settings** in the OpenView controller, edit **Server port**, and click **Save configuration**. Click **Stop**, then **Start** in the controller to apply it. Until the server restarts, **Open browser** continues to use its active port.
 
@@ -66,24 +86,29 @@ npm start
 
 `predev`, `pretest`, and `prebuild` prepare the Cesium runtime assets under ignored `public/cesium`. The production application is not static-only: its API routes require the generated Cloudflare-compatible Worker server.
 
+## Space objects
+
+OpenView opens with the satellite map selected and all overlays off. The space layer uses the existing globe. **Views & overlays → Space object types** has separate switches for **Satellites / payloads** and **Rocket bodies** (off by default). Click a point or search result for catalog identity, launch/status/owner fields, orbital information, predicted coordinates, source times, and all supplied source fields. Debris and unclassified objects are excluded throughout. See [Space objects](SPACE_OBJECTS.md) for data scope, caching, and verification.
+
 ## Configuration and credentials
 
-OpenView runs without configuration.
+OpenView runs without configuration; AISStream ship coverage requires a personal key.
 
-| Name                   |   Runtime requirement | Secret | Purpose                                                 |
-| ---------------------- | --------------------: | -----: | ------------------------------------------------------- |
-| `PHOTON_API_URL`       |              Optional |     No | Override the default HTTPS Photon place-search endpoint |
-| `FCC_USERNAME`         | Never used by runtime |     No | Optional offline FCC acquisition account                |
-| `FCC_API_TOKEN`        | Never used by runtime |    Yes | Optional offline FCC acquisition                        |
-| `OPENCELLID_API_TOKEN` | Never used by runtime |    Yes | Optional offline OpenCellID acquisition                 |
+| Name                   |         Runtime requirement | Secret | Purpose                                                        |
+| ---------------------- | --------------------------: | -----: | -------------------------------------------------------------- |
+| `PHOTON_API_URL`       |                    Optional |     No | Override the default HTTPS Photon place-search endpoint        |
+| `AISSTREAM_API_KEY`    | Required for AISStream only |    Yes | Local ship collector; Windows vault entry `OpenView/AISStream` |
+| `FCC_USERNAME`         |       Never used by runtime |     No | Optional offline FCC acquisition account                       |
+| `FCC_API_TOKEN`        |       Never used by runtime |    Yes | Optional offline FCC acquisition                               |
+| `OPENCELLID_API_TOKEN` |       Never used by runtime |    Yes | Optional offline OpenCellID acquisition                        |
 
 The FCC and OpenCellID acquisition tools are not included in this source release. Viewing or reloading prepared data never uses those credentials. OpenView does not collect GitHub, Cloudflare, property-portal, or map-provider logins. See [CREDENTIALS.md](CREDENTIALS.md) for storage and rotation details.
 
 ## Data scope and size
 
-Generated datasets are distributed as a release asset instead of tens of thousands of Git objects. The complete prepared `public` tree for v0.1.1 is 1,884,686,347 bytes across 62,585 files; estimated cell locations account for 1,354,890,539 bytes. The compressed release data package is checksum-pinned by both the installer and `npm run data:install`.
+Generated datasets are distributed as a release asset instead of tens of thousands of Git objects. The v0.2.0 data archive retains the six prepared datasets: 62,193 files, 1,877,583,643 uncompressed bytes, and 167,170,511 compressed bytes. Estimated cell locations make up most of the data. The package is checksum-pinned by both the installer and `npm run data:install`.
 
-The separate Windows x64 runtime package contains the prebuilt Worker/client output and a lockfile-derived, production-only Wrangler dependency tree. End users therefore do not compile OpenView or install npm packages during setup.
+The separate Windows x64 runtime package contains the prebuilt Worker/client output, local OSM/ship service, and a lockfile-derived, production-only Wrangler/WebSocket dependency tree. End users therefore do not compile OpenView or install npm packages during setup. Personal keys, ship snapshots, cached space catalogs, OSM downloads, and prepared OSM maps are not bundled. The OSM library defaults to `%LOCALAPPDATA%\OpenViewData\OSM` and is preserved across upgrades and uninstall.
 
 ## Reproduce release packages
 
@@ -100,7 +125,7 @@ npm run data:build
 ./installer/build.ps1
 ```
 
-`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.1.4`.
+`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.2.0`.
 
 Release archives and the installer are prepared and checked locally before publication. The **Reproduce release assets** workflow is deliberately post-publication: it installs the already-published pinned data, rebuilds both archives, requires their names, sizes, and SHA-256 digests to match the checked-in manifest, self-tests both sidecars, and uploads the complete reproducibility artifact. It cannot bootstrap the initial data release and never publishes a GitHub Release automatically.
 
@@ -113,6 +138,10 @@ Details:
 - [Estimated cell locations](CELL_LOCATIONS.md)
 - [Park boundaries](PARK_BOUNDARIES.md)
 - [Unified search](UNIFIED_SEARCH.md)
+- [Space objects](SPACE_OBJECTS.md)
+- [Ship snapshots and AISStream setup](SHIPS.md)
+- [Local OpenStreetMap data](OSM_DATA.md)
+- [v0.2.0 release notes](RELEASE_v0.2.0.md)
 - [v0.1.3 release notes](RELEASE_v0.1.3.md)
 - [v0.1.4 release notes](RELEASE_v0.1.4.md)
 - [v0.1.2 release notes](RELEASE_v0.1.2.md)
@@ -120,7 +149,7 @@ Details:
 
 ## Verification
 
-The prepared v0.1.1 candidate passed 108 automated tests, TypeScript checking, linting, formatting, a production build, a local Worker smoke test, dataset integrity checks, and a credential scan that suppresses matched values from its output.
+See the [v0.2.0 verification notes](RELEASE_v0.2.0.md#verification) for the current release checks and limits. Tests cover space classification/caching, ship sampling/cooldowns, local OSM safeguards, prepared data, and earlier map behavior. Production builds also verify that both browser workers reference same-origin deployed scripts.
 
 See the [v0.1.2 verification notes](RELEASE_v0.1.2.md#verification) for the configurable-port checks and their scope.
 

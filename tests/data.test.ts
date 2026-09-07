@@ -41,6 +41,20 @@ void test('missing speed or course does not invent motion', () => {
     track.lon,
   );
 });
+void test('ship markers and locate targets never extrapolate between snapshots', () => {
+  const ship = { ...track, kind: 'ships' as const, altitude: 8, speed: 20 };
+  for (const offset of [0, 15000, 60000, 120000, 599999, 600000, 86400000])
+    assert.deepEqual(predictedTrack(ship, now + offset), {
+      lat: ship.lat,
+      lon: ship.lon,
+      altitude: 8,
+    });
+  assert.deepEqual(predictedTrack({ ...ship, lon: 10 }, now + 600000), {
+    lat: ship.lat,
+    lon: 10,
+    altitude: 8,
+  });
+});
 void test('Vallado verification orbit propagates in physical altitude units', () => {
   const sat = twoline2satrec(
     '1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753',

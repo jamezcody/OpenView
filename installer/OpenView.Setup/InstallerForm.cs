@@ -23,6 +23,9 @@ internal sealed class InstallerForm : Form
     private readonly CheckBox _replaceOpenCellId = new() { AutoSize = true, Text = "Replace saved OpenCellID credential" };
     private readonly Label _openCellIdStatus = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly TextBox _openCellIdToken = new() { Dock = DockStyle.Fill, Enabled = false, UseSystemPasswordChar = true };
+    private readonly CheckBox _replaceAisStream = new() { AutoSize = true, Text = "Set AISStream key" };
+    private readonly Label _aisStreamStatus = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
+    private readonly TextBox _aisStreamKey = new() { Dock = DockStyle.Fill, Enabled = false, UseSystemPasswordChar = true };
     private readonly CheckBox _launchAfterInstall = new()
     {
         AutoSize = true,
@@ -82,6 +85,7 @@ internal sealed class InstallerForm : Form
         _browseButton.Click += BrowseClicked;
         _replaceFcc.CheckedChanged += (_, _) => UpdateCredentialInputs();
         _replaceOpenCellId.CheckedChanged += (_, _) => UpdateCredentialInputs();
+        _replaceAisStream.CheckedChanged += (_, _) => UpdateCredentialInputs();
         _installButton.Click += InstallClicked;
         _saveButton.Click += SaveClicked;
         _launchButton.Click += LaunchClicked;
@@ -112,6 +116,9 @@ internal sealed class InstallerForm : Form
         credentials.Controls.Add(_replaceOpenCellId, 0, 3);
         credentials.Controls.Add(_openCellIdStatus, 1, 3);
         AddField(credentials, "OpenCellID API token", _openCellIdToken, 4);
+        credentials.Controls.Add(_replaceAisStream, 0, 5);
+        credentials.Controls.Add(_aisStreamStatus, 1, 5);
+        AddField(credentials, "AISStream API key", _aisStreamKey, 6);
 
         var buttons = new FlowLayoutPanel
         {
@@ -168,7 +175,7 @@ internal sealed class InstallerForm : Form
             MaximumSize = new Size(720, 0),
             ForeColor = Color.FromArgb(26, 102, 66),
             Font = new Font(Font, FontStyle.Bold),
-            Text = "The production app runs locally and requires no API keys.",
+            Text = "OpenView runs locally. An AISStream API key is required only for AISStream ship coverage.",
         }, 0, 1);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Installation directory" }, 0, 3);
         layout.Controls.Add(locationRow, 0, 4);
@@ -196,7 +203,7 @@ internal sealed class InstallerForm : Form
             AutoSize = true,
             MaximumSize = new Size(720, 0),
             Padding = new Padding(0, 8, 0, 0),
-            Text = "Optional credentials are only for offline acquisition tools. Check a replacement box to overwrite a saved credential; unchecked credentials are preserved.",
+            Text = "For AISStream ship snapshots every ten minutes, create your own key at https://aisstream.io/account, check Set AISStream key, and paste it below. Without a key, ships use the regional Digitraffic fallback. Keys are saved in Windows Credential Manager. FCC and OpenCellID are only for offline acquisition. Unchecked credentials are preserved. Restart OpenView after changing the AISStream key.",
         }, 0, 12);
         layout.Controls.Add(credentials, 0, 13);
         var installOptions = new FlowLayoutPanel
@@ -330,6 +337,7 @@ internal sealed class InstallerForm : Form
         var port = AppSettings.ParsePort(_port.Text);
         if (_replaceFcc.Checked) CredentialManager.ValidateFccReplacement(_fccUsername.Text, _fccToken.Text);
         if (_replaceOpenCellId.Checked) CredentialManager.ValidateOpenCellIdReplacement(_openCellIdToken.Text);
+        if (_replaceAisStream.Checked) CredentialManager.ValidateAisStreamReplacement(_aisStreamKey.Text);
         return new AppSettings(url, port);
     }
 
@@ -337,6 +345,7 @@ internal sealed class InstallerForm : Form
     {
         if (_replaceFcc.Checked) CredentialManager.SaveFcc(_fccUsername.Text, _fccToken.Text);
         if (_replaceOpenCellId.Checked) CredentialManager.SaveOpenCellId(_openCellIdToken.Text);
+        if (_replaceAisStream.Checked) CredentialManager.SaveAisStream(_aisStreamKey.Text);
     }
 
     private void ClearCredentialEntryFields()
@@ -344,8 +353,10 @@ internal sealed class InstallerForm : Form
         _fccUsername.Clear();
         _fccToken.Clear();
         _openCellIdToken.Clear();
+        _aisStreamKey.Clear();
         _replaceFcc.Checked = false;
         _replaceOpenCellId.Checked = false;
+        _replaceAisStream.Checked = false;
     }
 
     private void LaunchClicked(object? sender, EventArgs eventArgs)
@@ -365,7 +376,7 @@ internal sealed class InstallerForm : Form
     private void RemoveCredentialsClicked(object? sender, EventArgs eventArgs)
     {
         if (MessageBox.Show(this,
-            "Remove both optional OpenView offline-refresh credentials for this Windows user?",
+            "Remove all optional OpenView credentials, including the AISStream ship-tracking key, for this Windows user?",
             "Remove saved credentials", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         try
@@ -387,11 +398,13 @@ internal sealed class InstallerForm : Form
         {
             _fccStatus.Text = CredentialManager.HasFcc ? "Saved" : "Not saved";
             _openCellIdStatus.Text = CredentialManager.HasOpenCellId ? "Saved" : "Not saved";
+            _aisStreamStatus.Text = CredentialManager.HasAisStream ? "Saved" : "Not saved";
         }
         catch
         {
             _fccStatus.Text = "Status unavailable";
             _openCellIdStatus.Text = "Status unavailable";
+            _aisStreamStatus.Text = "Status unavailable";
         }
     }
 
@@ -401,6 +414,7 @@ internal sealed class InstallerForm : Form
         _fccUsername.Enabled = idle && _replaceFcc.Checked;
         _fccToken.Enabled = idle && _replaceFcc.Checked;
         _openCellIdToken.Enabled = idle && _replaceOpenCellId.Checked;
+        _aisStreamKey.Enabled = idle && _replaceAisStream.Checked;
     }
 
     private static void StartInstalledLauncher(string directory)
@@ -423,6 +437,7 @@ internal sealed class InstallerForm : Form
         _photonUrl.Enabled = !busy;
         _replaceFcc.Enabled = !busy;
         _replaceOpenCellId.Enabled = !busy;
+        _replaceAisStream.Enabled = !busy;
         _saveButton.Enabled = !busy;
         _removeCredentialsButton.Enabled = !busy;
         _launchAfterInstall.Enabled = !busy;

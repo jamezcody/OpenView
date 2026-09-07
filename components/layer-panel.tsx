@@ -1,9 +1,11 @@
 'use client';
 import type { ReactNode } from 'react';
-import { Layers, Info } from 'lucide-react';
+import { Layers, Info, Eye, Hammer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { LAYERS, type LayerId } from '@/lib/map-layers';
+import { OSM_STYLE, type OsmLayer } from '@/lib/osm-model';
+import { OSM_MAN_MADE_SYMBOL } from '@/lib/osm-symbols';
 
 export type OverlayControl = {
   id: string;
@@ -56,8 +58,14 @@ export const LEGEND = [
   [
     'dot',
     '#c3ed97',
-    'Space objects',
-    'Calculated satellite positions from the last downloaded orbital elements.',
+    'Satellites / payloads',
+    'Calculated payload positions from the last downloaded orbital elements.',
+  ],
+  [
+    'dot',
+    '#ffc16d',
+    'Rocket bodies',
+    'Cataloged rocket stages. Debris and unknown object types are excluded.',
   ],
   [
     'line',
@@ -75,7 +83,7 @@ export const LEGEND = [
     'diamond',
     '#ffbd86',
     'Ships',
-    'AIS vessel reports from the Finnish coast and Baltic region.',
+    'Sampled AIS ship reports every ten minutes. Points stay at their reported positions between updates.',
   ],
   [
     'dot',
@@ -139,7 +147,7 @@ export const LEGEND = [
   ],
 ] as const;
 
-export function Legend() {
+export function Legend({ osmLayers = [] }: { osmLayers?: OsmLayer[] }) {
   return (
     <details id="map-legend-guide" className="panel-detail legend-guide">
       <summary>
@@ -151,6 +159,42 @@ export function Legend() {
         the map surface.
       </p>
       <dl>
+        {osmLayers.map((layer) => (
+          <div key={`osm-${layer}`}>
+            <dt>
+              <i
+                aria-hidden
+                className="map-symbol area"
+                style={{ color: OSM_STYLE[layer].color }}
+              />
+              OpenStreetMap · {OSM_STYLE[layer].name}
+            </dt>
+            <dd>
+              {layer === 'structures' && (
+                <span className="osm-symbol-key">
+                  <span>
+                    <Eye
+                      size={22}
+                      aria-hidden
+                      style={{ color: OSM_MAN_MADE_SYMBOL.surveillance }}
+                    />{' '}
+                    Purple eye: surveillance
+                  </span>
+                  <span>
+                    <Hammer
+                      size={22}
+                      aria-hidden
+                      style={{ color: OSM_MAN_MADE_SYMBOL.other }}
+                    />{' '}
+                    Red hammer: other man-made features
+                  </span>
+                </span>
+              )}
+              Imported file · visible from about zoom {OSM_STYLE[layer].zoom};
+              detail is limited in dense areas.
+            </dd>
+          </div>
+        ))}
         {LEGEND.map(([shape, color, name, meaning]) => (
           <div key={name}>
             <dt>
@@ -166,9 +210,9 @@ export function Legend() {
         ))}
       </dl>
       <p>
-        Aircraft dim after one minute and ships after ten minutes. Their motion
-        estimates freeze after 60 and 120 seconds respectively. Source data may
-        be missing or old; a blank area does not prove absence.
+        Aircraft dim after one minute and ships after ten minutes. Aircraft
+        motion estimates freeze after 60 seconds; ship positions remain fixed.
+        Source data may be missing or old; a blank area does not prove absence.
       </p>
       <p>
         Place labels identify geographic names and administrative boundaries.
@@ -184,11 +228,13 @@ export function LayerPanel({
   setLayer,
   overlays,
   children,
+  osmLayers,
 }: {
   layer: LayerId;
   setLayer: (layer: LayerId) => void;
   overlays: OverlayControl[];
   children: ReactNode;
+  osmLayers?: OsmLayer[];
 }) {
   return (
     <div className="layer-panel">
@@ -249,7 +295,7 @@ export function LayerPanel({
           );
         })}
       </section>
-      <Legend />
+      <Legend osmLayers={osmLayers} />
       {children}
     </div>
   );

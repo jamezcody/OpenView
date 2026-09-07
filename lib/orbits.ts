@@ -28,7 +28,9 @@ export function epochTime(omm: OMM) {
   return Date.parse(omm.EPOCH.endsWith('Z') ? omm.EPOCH : omm.EPOCH + 'Z');
 }
 export function predictedTrack(track: Track, now: number) {
-  const maxAge = track.kind === 'aircraft' ? 60 : 120;
+  if (track.kind === 'ships')
+    return { lat: track.lat, lon: track.lon, altitude: track.altitude };
+  const maxAge = 60;
   const age = Math.min(maxAge, Math.max(0, (now - track.observedAt) / 1000));
   if (track.speed === null || track.heading === null)
     return { lat: track.lat, lon: track.lon, altitude: track.altitude };

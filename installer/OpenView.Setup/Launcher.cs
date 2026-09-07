@@ -392,8 +392,7 @@ internal sealed class LauncherForm : Form
     {
         var port = AppSettings.ValidatePort(settings.Port);
         var photonUrl = InstallerEngine.ValidatePhotonUrl(settings.PhotonApiUrl);
-        var wrangler = InstallerEngine.CombineUnderRoot(installation, "node_modules/wrangler/bin/wrangler.js");
-        var config = InstallerEngine.CombineUnderRoot(installation, "dist/server/wrangler.json");
+        var localServer = InstallerEngine.CombineUnderRoot(installation, "dist/local/server.mjs");
         var start = new ProcessStartInfo(node)
         {
             WorkingDirectory = installation,
@@ -404,13 +403,12 @@ internal sealed class LauncherForm : Form
         };
         foreach (var argument in new[]
         {
-            wrangler, "dev", "--config", config, "--ip", "127.0.0.1", "--port", port.ToString(CultureInfo.InvariantCulture),
-            "--log-level", "error",
+            localServer, "--port", port.ToString(CultureInfo.InvariantCulture),
         }) start.ArgumentList.Add(argument);
         if (photonUrl.Length != 0)
         {
-            start.ArgumentList.Add("--var");
-            start.ArgumentList.Add($"PHOTON_API_URL:{photonUrl}");
+            start.ArgumentList.Add("--photon-url");
+            start.ArgumentList.Add(photonUrl);
         }
         InstallerEngine.SanitizeEnvironment(start);
         return start;

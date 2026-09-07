@@ -44,6 +44,7 @@ internal static class SelfTest
         VerifySettingsAndPorts();
         VerifyPortAvailability();
         VerifyBrandingAndShortcuts();
+        VerifyCredentialBoundaries();
 
         if (InstallerEngine.NormalizeArchivePath("./dist/client/favicon.svg", false) != "dist/client/favicon.svg")
             throw new InvalidOperationException("Archive-path normalization failed.");
@@ -56,6 +57,21 @@ internal static class SelfTest
         ExpectFailure(() => InstallerEngine.ValidateInstallDirectory(InstallerEngine.UserDataDirectory));
         using (var job = new KillOnCloseJob()) { }
         return 0;
+    }
+
+    private static void VerifyCredentialBoundaries()
+    {
+        // Validation only: never read, replace, or remove the user's saved vault entries.
+        CredentialManager.ValidateAisStreamReplacement("placeholder");
+        foreach (var invalid in new[] { "", " ", new string('x', 1281) })
+            ExpectFailure(() => CredentialManager.ValidateAisStreamReplacement(invalid));
+        var start = new System.Diagnostics.ProcessStartInfo();
+        foreach (var name in new[] { "AISSTREAM_API_KEY", "FCC_API_TOKEN", "OPENCELLID_API_TOKEN" })
+            start.Environment[name] = "placeholder";
+        InstallerEngine.SanitizeEnvironment(start);
+        if (new[] { "AISSTREAM_API_KEY", "FCC_API_TOKEN", "OPENCELLID_API_TOKEN" }
+            .Any(start.Environment.ContainsKey))
+            throw new InvalidOperationException("A credential leaked into the child runtime environment.");
     }
 
     private static void VerifyBrandingAndShortcuts()
@@ -147,6 +163,11 @@ internal static class SelfTest
             throw new InvalidOperationException("Legacy settings did not retain the default local port.");
 
         var expected = new AppSettings(photonUrl, 49152);
+        var start = LauncherForm.CreateWorkerStartInfo(AppContext.BaseDirectory, "node.exe", expected);
+        if (!start.ArgumentList[0].EndsWith(Path.Combine("dist", "local", "server.mjs"), StringComparison.Ordinal)
+            || !start.ArgumentList.Contains("49152") || !start.ArgumentList.Contains("--photon-url")
+            || !start.ArgumentList.Contains(photonUrl) || start.UseShellExecute || !start.CreateNoWindow)
+            throw new InvalidOperationException("The local data server launch configuration is invalid.");
         var roundTrip = AppSettings.Parse(Encoding.UTF8.GetBytes(expected.Serialize()));
         if (roundTrip != expected)
             throw new InvalidOperationException("OpenView settings did not round-trip.");

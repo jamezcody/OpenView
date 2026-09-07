@@ -12,9 +12,24 @@ internal static class CredentialManager
     private const int MaximumCredentialBytes = 2560;
     private const string FccTarget = "OpenView/FCC";
     private const string OpenCellIdTarget = "OpenView/OpenCellID";
+    private const string AisStreamTarget = "OpenView/AISStream";
 
     public static bool HasFcc => Exists(FccTarget);
     public static bool HasOpenCellId => Exists(OpenCellIdTarget);
+    public static bool HasAisStream => Exists(AisStreamTarget);
+
+    public static void ValidateAisStreamReplacement(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new InvalidOperationException("Replacing the AISStream credential requires an API key.");
+        ValidateValue(token, "AISStream key");
+    }
+
+    public static void SaveAisStream(string token)
+    {
+        ValidateAisStreamReplacement(token);
+        Save(AisStreamTarget, "AISStream", token.Trim());
+    }
 
     public static void ValidateFccReplacement(string username, string token)
     {
@@ -46,7 +61,7 @@ internal static class CredentialManager
     public static void RemoveAll()
     {
         var errors = new List<Exception>();
-        foreach (var target in new[] { FccTarget, OpenCellIdTarget })
+        foreach (var target in new[] { FccTarget, OpenCellIdTarget, AisStreamTarget })
         {
             try { Delete(target); }
             catch (Exception error) { errors.Add(error); }
@@ -75,7 +90,7 @@ internal static class CredentialManager
                 CredentialBlob = blob,
                 Persist = CredentialPersistLocalMachine,
                 UserName = username,
-                Comment = "Optional OpenView offline data-refresh credential",
+                Comment = "Optional OpenView data credential",
             };
             if (!CredWrite(ref credential, 0))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows Credential Manager rejected the credential.");
