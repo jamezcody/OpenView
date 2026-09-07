@@ -2,13 +2,13 @@
 
 OpenView is an interactive 3D Earth explorer for satellite, street, and topographic maps with parks, campsites, radio sites, estimated cell locations, FCC coverage, addresses, parcels, satellites, aircraft, and ships.
 
-Version 0.1.1 fixes national/state park archive loading on hosts without byte-range support, keeps individual tent/RV sites visible during close-view refreshes, and preserves a usable basemap when a provider has no closer tile. It also reduces unused UI and dependency weight, bounds network reads, and avoids unnecessary map-layer rebuilds.
+Version 0.1.2 adds a configurable server port to the Windows installer and controller settings. It includes the park archive, close-zoom camping marker, basemap fallback, and performance improvements from v0.1.1.
 
 ## Install on Windows
 
-Download `OpenView-Setup-v0.1.1.exe` and `SHA256SUMS.txt` from the [v0.1.1 release](https://github.com/jamezcody/openview-earth/releases/tag/v0.1.1).
+Download `OpenView-Setup-v0.1.2.exe` and `SHA256SUMS.txt` from the [v0.1.2 release](https://github.com/jamezcody/openview-earth/releases/tag/v0.1.2).
 
-The setup executable includes its own .NET runtime, runs per user without elevation, and verifies checksum-pinned Windows x64 runtime and data packages. Put both release archives beside setup for a pre-push or offline install; when a sidecar is absent, setup downloads that exact asset. The installed app uses the system's Node.js runtime. OpenView itself needs no API key. An advanced page can save optional offline data-refresh credentials in Windows Credential Manager for the current Windows user; those credentials are never put in the site, browser, logs, command line, or a plaintext file.
+The setup executable includes its own .NET runtime, runs per user without elevation, and verifies checksum-pinned Windows x64 runtime and data packages. Put both release archives beside setup for an offline install; when a sidecar is absent, setup downloads that exact asset. The installed app uses the system's Node.js runtime. OpenView itself needs no API key. An advanced page can save optional offline data-refresh credentials in Windows Credential Manager for the current Windows user; those credentials are never put in the site, browser, logs, command line, or a plaintext file.
 
 Requirements:
 
@@ -17,7 +17,19 @@ Requirements:
 - Internet access only when a release archive is not beside setup
 - 5 GB of free disk space recommended (setup keeps a verified backup during upgrades)
 
-The v0.1.1 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it.
+The v0.1.2 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it.
+
+### Choose the server port
+
+Enter **Server port** before clicking **Install / repair**. The default is `8787`; choosing `8080`, for example, hosts OpenView at `http://127.0.0.1:8080/`. OpenView remains accessible only on this computer.
+
+Setup accepts whole numbers from `1` to `65535`, except ports blocked by web browsers. If the selected port is unavailable, the controller explains how to choose another.
+
+To upgrade from v0.1.1, close the OpenView controller, run the downloaded v0.1.2 setup executable, keep the existing installation folder, choose a port, and click **Install / repair**. Existing settings without a port use `8787`; saved optional credentials are preserved unless their replacement boxes are checked.
+
+To change the port later, open **Settings** in the OpenView controller, edit **Server port**, and click **Save configuration**. Click **Stop**, then **Start** in the controller to apply it. Until the server restarts, **Open browser** continues to use its active port.
+
+The selected port and optional Photon URL are saved in `%LOCALAPPDATA%\OpenView\config\settings.json`.
 
 ## Run from source
 
@@ -65,7 +77,7 @@ The separate Windows x64 runtime package contains the prebuilt Worker/client out
 
 Use Node.js 24.18.0 on 64-bit Windows. Runtime and data archives use sorted POSIX tar entries, normalized metadata, bounded file/byte counts, and deterministic gzip output. The data command sanitizes public provenance, scans for credentials, runs the full test suite, and then packages the six prepared data roots.
 
-For a post-publication clone, install the pinned data first. When producing the initial local v0.1.1 candidate, skip `npm run data:install` because the release URL does not exist yet; the prepared roots must already be present in the release workspace.
+For a post-publication clone, install the pinned data first. When producing a release before its download URL exists, skip `npm run data:install`; the prepared roots must already be present in the release workspace.
 
 ```powershell
 npm ci
@@ -76,9 +88,9 @@ npm run data:build
 ./installer/build.ps1
 ```
 
-`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.1.1`.
+`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.1.2`.
 
-The first v0.1.1 data archive and installer are produced locally and uploaded only after the local production test is approved. The **Reproduce release assets** workflow is deliberately post-publication: it installs the already-published pinned data, rebuilds both archives, requires their names, sizes, and SHA-256 digests to match the checked-in manifest, self-tests both sidecars, and uploads the complete reproducibility artifact. It cannot bootstrap the initial data release and never publishes a GitHub Release automatically.
+Release archives and the installer are prepared and checked locally before publication. The **Reproduce release assets** workflow is deliberately post-publication: it installs the already-published pinned data, rebuilds both archives, requires their names, sizes, and SHA-256 digests to match the checked-in manifest, self-tests both sidecars, and uploads the complete reproducibility artifact. It cannot bootstrap the initial data release and never publishes a GitHub Release automatically.
 
 The datasets have different dates, geographic coverage, accuracy, and reuse terms. Estimated cell coordinates are not a tower census, modeled FCC coverage is not measured service, and parcel/property coverage varies by jurisdiction.
 
@@ -89,11 +101,14 @@ Details:
 - [Estimated cell locations](CELL_LOCATIONS.md)
 - [Park boundaries](PARK_BOUNDARIES.md)
 - [Unified search](UNIFIED_SEARCH.md)
+- [v0.1.2 release notes](RELEASE_v0.1.2.md)
 - [v0.1.1 release notes](RELEASE_v0.1.1.md)
 
 ## Verification
 
 The prepared v0.1.1 candidate passed 108 automated tests, TypeScript checking, linting, formatting, a production build, a local Worker smoke test, dataset integrity checks, and a credential scan that suppresses matched values from its output.
+
+See the [v0.1.2 verification notes](RELEASE_v0.1.2.md#verification) for the configurable-port checks and their scope.
 
 The generated Worker configuration declares no D1/R2 binding and no runtime secret. A public multi-user deployment should add globally coordinated request limiting and verify hosting asset limits and cache behavior before scaling.
 

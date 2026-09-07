@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       published_data_available:
-        description: Confirm the checksum-pinned v0.1.1 data asset is already published
+        description: Confirm the checksum-pinned v0.1.2 data asset is already published
         required: true
         default: false
         type: boolean
@@ -64,16 +64,16 @@ jobs:
         run: ./installer/build.ps1
       - name: Verify the setup and sidecars
         shell: pwsh
-        run: ./artifacts/v0.1.1/OpenView-Setup-v0.1.1.exe --self-test --sidecar-dir ./artifacts/v0.1.1
+        run: ./artifacts/v0.1.2/OpenView-Setup-v0.1.2.exe --self-test --sidecar-dir ./artifacts/v0.1.2
       - uses: actions/upload-artifact@v7
         with:
-          name: openview-v0.1.1-windows-x64
+          name: openview-v0.1.2-windows-x64
           path: |
-            artifacts/v0.1.1/OpenView-Setup-v0.1.1.exe
-            artifacts/v0.1.1/openview-data-v0.1.1.tar.gz
-            artifacts/v0.1.1/openview-runtime-win-x64-v0.1.1.tar.gz
-            artifacts/v0.1.1/release-manifest.json
-            artifacts/v0.1.1/SHA256SUMS.txt
+            artifacts/v0.1.2/OpenView-Setup-v0.1.2.exe
+            artifacts/v0.1.2/openview-data-v0.1.2.tar.gz
+            artifacts/v0.1.2/openview-runtime-win-x64-v0.1.2.tar.gz
+            artifacts/v0.1.2/release-manifest.json
+            artifacts/v0.1.2/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

@@ -1,3 +1,7 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+
 namespace OpenView.Setup;
 
 internal static class SelfTest
@@ -37,6 +41,9 @@ internal static class SelfTest
         ExpectFailure(() => InstallerEngine.ValidatePhotonUrl("https://example.invalid/api?q=nope"));
         ExpectFailure(() => InstallerEngine.ValidatePhotonUrl("https://example.invalid/api#fragment"));
 
+        VerifySettingsAndPorts();
+        VerifyPortAvailability();
+
         if (InstallerEngine.NormalizeArchivePath("./dist/client/favicon.svg", false) != "dist/client/favicon.svg")
             throw new InvalidOperationException("Archive-path normalization failed.");
         foreach (var unsafePath in new[]
@@ -48,6 +55,58 @@ internal static class SelfTest
         ExpectFailure(() => InstallerEngine.ValidateInstallDirectory(InstallerEngine.UserDataDirectory));
         using (var job = new KillOnCloseJob()) { }
         return 0;
+    }
+
+    private static void VerifySettingsAndPorts()
+    {
+        const string photonUrl = "https://photon.example.test/api";
+        var defaults = AppSettings.Parse(Encoding.UTF8.GetBytes("{}"));
+        if (defaults != AppSettings.Default
+            || AppSettings.Parse(Encoding.UTF8.GetBytes(defaults.Serialize())) != defaults)
+            throw new InvalidOperationException("Default OpenView settings did not round-trip.");
+
+        var legacy = AppSettings.Parse(Encoding.UTF8.GetBytes(
+            $$"""{"schemaVersion":1,"photonApiUrl":"{{photonUrl}}"}"""));
+        if (legacy.PhotonApiUrl != photonUrl || legacy.Port != AppSettings.DefaultPort)
+            throw new InvalidOperationException("Legacy settings did not retain the default local port.");
+
+        var expected = new AppSettings(photonUrl, 49152);
+        var roundTrip = AppSettings.Parse(Encoding.UTF8.GetBytes(expected.Serialize()));
+        if (roundTrip != expected)
+            throw new InvalidOperationException("OpenView settings did not round-trip.");
+
+        foreach (var port in new[] { 2, 80, 8080, AppSettings.DefaultPort, 65535 })
+        {
+            AppSettings.ValidatePort(port);
+            if (AppSettings.ParsePort(port.ToString()) != port)
+                throw new InvalidOperationException("A valid local port did not parse.");
+            if (LauncherForm.GetLocalUrl(port) != $"http://127.0.0.1:{port}/")
+                throw new InvalidOperationException("The local OpenView URL is invalid.");
+        }
+
+        foreach (var port in new[] { 0, -1, 1, 22, 6000, 6667, 10080, 65536, int.MinValue, int.MaxValue })
+            ExpectFailure(() => AppSettings.ValidatePort(port));
+        foreach (var port in new string?[] { null, "", " ", "+1", "-1", "1.0", "1e3", "65536", "abc" })
+            ExpectFailure(() => AppSettings.ParsePort(port));
+        foreach (var json in new[]
+        {
+            """{"schemaVersion":1,"photonApiUrl":null,"port":null}""",
+            """{"schemaVersion":1,"photonApiUrl":null,"port":"8787"}""",
+            """{"schemaVersion":1,"photonApiUrl":null,"port":8787.5}""",
+            """{"schemaVersion":1,"photonApiUrl":null,"port":0}""",
+            """{"schemaVersion":1,"photonApiUrl":null,"port":65536}""",
+        }) ExpectFailure(() => AppSettings.Parse(Encoding.UTF8.GetBytes(json)));
+    }
+
+    private static void VerifyPortAvailability()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Server.ExclusiveAddressUse = true;
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        ExpectFailure(() => LauncherForm.RefuseOccupiedPort(port));
+        listener.Stop();
+        LauncherForm.RefuseOccupiedPort(port);
     }
 
     public static async Task<int> RunAcceptanceAsync(string target)

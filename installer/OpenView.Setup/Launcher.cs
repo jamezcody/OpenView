@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -8,8 +9,7 @@ namespace OpenView.Setup;
 internal sealed class LauncherForm : Form
 {
     internal const string MutexName = @"Local\OpenView.Controller.com.jamezcody.openview";
-    private const int Port = 8787;
-    private const string LocalUrl = "http://127.0.0.1:8787/";
+    private string _localUrl = GetLocalUrl(AppSettings.DefaultPort);
 
     private readonly Label _status = new() { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Button _start = new() { Text = "Start", AutoSize = true };
@@ -149,32 +149,14 @@ internal sealed class LauncherForm : Form
         {
             var token = runCancellation.Token;
             InstallerEngine.ValidateInstalledLayout(AppContext.BaseDirectory);
-            RefuseOccupiedPort();
+            var settings = InstallerEngine.LoadSettings();
+            var localUrl = GetLocalUrl(settings.Port);
+            _localUrl = localUrl;
+            RefuseOccupiedPort(settings.Port);
             var node = await InstallerEngine.FindNodeAsync(token);
             token.ThrowIfCancellationRequested();
             var installation = Path.GetFullPath(AppContext.BaseDirectory);
-            var wrangler = InstallerEngine.CombineUnderRoot(installation, "node_modules/wrangler/bin/wrangler.js");
-            var config = InstallerEngine.CombineUnderRoot(installation, "dist/server/wrangler.json");
-            var start = new ProcessStartInfo(node)
-            {
-                WorkingDirectory = installation,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            foreach (var argument in new[]
-            {
-                wrangler, "dev", "--config", config, "--ip", "127.0.0.1", "--port", Port.ToString(),
-                "--log-level", "error",
-            }) start.ArgumentList.Add(argument);
-            var photonUrl = InstallerEngine.LoadPhotonUrl();
-            if (photonUrl.Length != 0)
-            {
-                start.ArgumentList.Add("--var");
-                start.ArgumentList.Add($"PHOTON_API_URL:{photonUrl}");
-            }
-            InstallerEngine.SanitizeEnvironment(start);
+            var start = CreateWorkerStartInfo(installation, node, settings);
             token.ThrowIfCancellationRequested();
 
             var process = Process.Start(start)
@@ -203,9 +185,9 @@ internal sealed class LauncherForm : Form
             {
                 if (process.HasExited)
                     throw new InvalidOperationException($"The local server exited with code {process.ExitCode}.");
-                if (await IsOwnedRuntimeReadyAsync(process, token))
+                if (await IsOwnedRuntimeReadyAsync(process, localUrl, token))
                 {
-                    _status.Text = $"OpenView is running at {LocalUrl}";
+                    _status.Text = $"OpenView is running at {localUrl}";
                     _open.Enabled = true;
                     _start.Enabled = false;
                     _stop.Enabled = true;
@@ -384,35 +366,67 @@ internal sealed class LauncherForm : Form
         _configure.Enabled = true;
     }
 
-    private static void RefuseOccupiedPort()
+    internal static string GetLocalUrl(int port) =>
+        $"http://127.0.0.1:{AppSettings.ValidatePort(port).ToString(CultureInfo.InvariantCulture)}/";
+
+    internal static void RefuseOccupiedPort(int port)
     {
+        AppSettings.ValidatePort(port);
         TcpListener? listener = null;
         try
         {
-            listener = new TcpListener(IPAddress.Loopback, Port);
+            listener = new TcpListener(IPAddress.Loopback, port);
             listener.Server.ExclusiveAddressUse = true;
             listener.Start();
         }
         catch (SocketException)
         {
             throw new InvalidOperationException(
-                $"TCP port {Port} is already in use. Stop the other program before starting OpenView.");
+                $"TCP port {port} is unavailable or already in use. Choose another Server port in Settings, save it, then start OpenView again.");
         }
         finally { listener?.Stop(); }
     }
 
-    private static async Task<bool> IsOwnedRuntimeReadyAsync(Process worker, CancellationToken cancellationToken)
+    internal static ProcessStartInfo CreateWorkerStartInfo(string installation, string node, AppSettings settings)
+    {
+        var port = AppSettings.ValidatePort(settings.Port);
+        var photonUrl = InstallerEngine.ValidatePhotonUrl(settings.PhotonApiUrl);
+        var wrangler = InstallerEngine.CombineUnderRoot(installation, "node_modules/wrangler/bin/wrangler.js");
+        var config = InstallerEngine.CombineUnderRoot(installation, "dist/server/wrangler.json");
+        var start = new ProcessStartInfo(node)
+        {
+            WorkingDirectory = installation,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in new[]
+        {
+            wrangler, "dev", "--config", config, "--ip", "127.0.0.1", "--port", port.ToString(CultureInfo.InvariantCulture),
+            "--log-level", "error",
+        }) start.ArgumentList.Add(argument);
+        if (photonUrl.Length != 0)
+        {
+            start.ArgumentList.Add("--var");
+            start.ArgumentList.Add($"PHOTON_API_URL:{photonUrl}");
+        }
+        InstallerEngine.SanitizeEnvironment(start);
+        return start;
+    }
+
+    internal static async Task<bool> IsOwnedRuntimeReadyAsync(Process worker, string localUrl, CancellationToken cancellationToken)
     {
         if (worker.HasExited) return false;
         try
         {
             using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
-            using var root = await client.GetAsync(LocalUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var root = await client.GetAsync(localUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!root.IsSuccessStatusCode || worker.HasExited) return false;
 
             var probe = ReleaseConfig.Current.RuntimeProbe;
-            var probeUrl = LocalUrl.TrimEnd('/') + probe.Path;
+            var probeUrl = localUrl.TrimEnd('/') + probe.Path;
             using var response = await client.GetAsync(probeUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode || worker.HasExited) return false;
             if (response.Content.Headers.ContentLength is > 1024 * 1024) return false;
@@ -440,8 +454,8 @@ internal sealed class LauncherForm : Form
         while (await reader.ReadAsync(buffer, cancellationToken) != 0) { }
     }
 
-    private static void OpenBrowser() =>
-        Process.Start(new ProcessStartInfo(LocalUrl) { UseShellExecute = true });
+    private void OpenBrowser() =>
+        Process.Start(new ProcessStartInfo(_localUrl) { UseShellExecute = true });
 
     private static void OpenSettings()
     {

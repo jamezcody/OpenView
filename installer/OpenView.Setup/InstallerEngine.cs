@@ -16,7 +16,8 @@ namespace OpenView.Setup;
 internal sealed record InstallOptions(
     string InstallDirectory,
     string? PhotonApiUrl,
-    bool AcceptanceTest = false);
+    bool AcceptanceTest = false,
+    int Port = AppSettings.DefaultPort);
 internal sealed record InstallResult(string InstallDirectory, IReadOnlyList<string> Warnings);
 internal enum ArchiveKind { Runtime, Data }
 
@@ -73,6 +74,7 @@ internal static partial class InstallerEngine
         IProgress<string> progress,
         CancellationToken cancellationToken)
     {
+        var settings = new AppSettings(ValidatePhotonUrl(options.PhotonApiUrl), AppSettings.ValidatePort(options.Port));
         var manifest = ReleaseConfig.Current;
         var target = ValidateInstallDirectory(options.InstallDirectory);
         if (options.AcceptanceTest)
@@ -167,7 +169,7 @@ internal static partial class InstallerEngine
             if (!options.AcceptanceTest)
             {
                 progress.Report("Saving local configuration...");
-                try { await WriteSettingsAsync(options.PhotonApiUrl, cancellationToken); }
+                try { await WriteSettingsAsync(settings, cancellationToken); }
                 catch (Exception error) { warnings.Add($"Settings were not saved: {error.Message}"); }
                 try { CreateStartMenuShortcut(target); }
                 catch (Exception error) { warnings.Add($"The Start menu shortcut was not created: {error.Message}"); }
@@ -238,30 +240,19 @@ internal static partial class InstallerEngine
         return uri.AbsoluteUri;
     }
 
-    public static string LoadPhotonUrl()
+    public static AppSettings LoadSettings()
     {
-        if (!File.Exists(SettingsPath)) return string.Empty;
+        if (!File.Exists(SettingsPath)) return AppSettings.Default;
         EnsureNoReparsePointsThrough(SettingsPath);
         var info = new FileInfo(SettingsPath);
         if (info.Length is < 1 or > 64 * 1024)
             throw new InvalidOperationException("The OpenView settings file has an invalid size.");
-        using var document = JsonDocument.Parse(File.ReadAllBytes(SettingsPath), new JsonDocumentOptions
-        {
-            CommentHandling = JsonCommentHandling.Disallow,
-            AllowTrailingCommas = false,
-            MaxDepth = 8,
-        });
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
-            throw new InvalidOperationException("The OpenView settings file is invalid.");
-        return document.RootElement.TryGetProperty("photonApiUrl", out var property)
-            && property.ValueKind == JsonValueKind.String
-            ? ValidatePhotonUrl(property.GetString())
-            : string.Empty;
+        return AppSettings.Parse(File.ReadAllBytes(SettingsPath));
     }
 
-    public static async Task WriteSettingsAsync(string? photonApiUrl, CancellationToken cancellationToken)
+    public static async Task WriteSettingsAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var value = ValidatePhotonUrl(photonApiUrl);
+        var content = settings.Serialize();
         var directory = Path.GetDirectoryName(SettingsPath)!;
         EnsureNoReparsePointsThrough(directory);
         Directory.CreateDirectory(directory);
@@ -270,11 +261,6 @@ internal static partial class InstallerEngine
         var temporary = Path.Combine(directory, $"settings-{Guid.NewGuid():N}.tmp");
         try
         {
-            var content = JsonSerializer.Serialize(new
-            {
-                schemaVersion = 1,
-                photonApiUrl = value.Length == 0 ? null : value,
-            }, new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine;
             await File.WriteAllTextAsync(temporary, content, cancellationToken);
             EnsureNoReparsePointsThrough(SettingsPath);
             File.Move(temporary, SettingsPath, true);

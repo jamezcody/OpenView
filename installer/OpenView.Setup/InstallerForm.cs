@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 
 namespace OpenView.Setup;
 
@@ -7,6 +8,13 @@ internal sealed class InstallerForm : Form
 {
     private readonly TextBox _installDirectory = new() { Dock = DockStyle.Fill };
     private readonly Button _browseButton = new() { AutoSize = true, Text = "Browse..." };
+    private readonly TextBox _port = new()
+    {
+        Width = 110,
+        MaxLength = 5,
+        Text = AppSettings.DefaultPort.ToString(CultureInfo.InvariantCulture),
+        AccessibleName = "Server port",
+    };
     private readonly TextBox _photonUrl = new() { Dock = DockStyle.Fill };
     private readonly CheckBox _replaceFcc = new() { AutoSize = true, Text = "Replace saved FCC credential" };
     private readonly Label _fccStatus = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
@@ -46,15 +54,20 @@ internal sealed class InstallerForm : Form
     public InstallerForm()
     {
         Text = $"OpenView {ReleaseConfig.Current.Version} Setup";
-        ClientSize = new Size(780, 690);
-        MinimumSize = new Size(740, 650);
+        ClientSize = new Size(780, Math.Min(770, (Screen.PrimaryScreen?.WorkingArea.Height ?? 870) - 100));
+        MinimumSize = new Size(740, 540);
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
         Font = new Font("Segoe UI", 9F);
         Padding = new Padding(24);
 
         _installDirectory.Text = InstallerEngine.DiscoverInstallDirectory();
-        try { _photonUrl.Text = InstallerEngine.LoadPhotonUrl(); }
+        try
+        {
+            var settings = InstallerEngine.LoadSettings();
+            _photonUrl.Text = settings.PhotonApiUrl;
+            _port.Text = settings.Port.ToString(CultureInfo.InvariantCulture);
+        }
         catch (Exception error) { _status.Text = $"Existing settings could not be loaded: {error.Message}"; }
 
         _browseButton.Click += BrowseClicked;
@@ -100,7 +113,14 @@ internal sealed class InstallerForm : Form
         };
         buttons.Controls.AddRange([_installButton, _saveButton, _launchButton, _removeCredentialsButton]);
 
-        var layout = new TableLayoutPanel { ColumnCount = 1, Dock = DockStyle.Fill, RowCount = 14 };
+        var layout = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            RowCount = 17,
+        };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -112,7 +132,10 @@ internal sealed class InstallerForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -133,31 +156,43 @@ internal sealed class InstallerForm : Form
         }, 0, 1);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Installation directory" }, 0, 3);
         layout.Controls.Add(locationRow, 0, 4);
-        layout.Controls.Add(new Label { AutoSize = true, Text = "PHOTON_API_URL (optional, non-secret)" }, 0, 6);
-        layout.Controls.Add(_photonUrl, 0, 7);
+        layout.Controls.Add(new Label { AutoSize = true, Text = "Server port" }, 0, 6);
+        layout.Controls.Add(_port, 0, 7);
+        layout.Controls.Add(new Label
+        {
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            MaximumSize = new Size(720, 0),
+            Padding = new Padding(0, 0, 0, 10),
+            Text = "Default: 8787. Choose an available port, such as 8080. Save configuration, then stop and start OpenView to apply a change. The server is accessible only on this computer.",
+        }, 0, 8);
+        layout.Controls.Add(new Label { AutoSize = true, Text = "PHOTON_API_URL (optional, non-secret)" }, 0, 9);
+        layout.Controls.Add(_photonUrl, 0, 10);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             MaximumSize = new Size(720, 0),
             Text = "Leave blank for the built-in default. Only an HTTPS URL without user info, query parameters, or a fragment is accepted.",
-        }, 0, 8);
+        }, 0, 11);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
             MaximumSize = new Size(720, 0),
             Padding = new Padding(0, 8, 0, 0),
             Text = "Optional credentials are only for offline acquisition tools. Check a replacement box to overwrite a saved credential; unchecked credentials are preserved.",
-        }, 0, 9);
-        layout.Controls.Add(credentials, 0, 10);
-        layout.Controls.Add(_launchAfterInstall, 0, 11);
-        layout.Controls.Add(_progressBar, 0, 12);
+        }, 0, 12);
+        layout.Controls.Add(credentials, 0, 13);
+        layout.Controls.Add(_launchAfterInstall, 0, 14);
+        layout.Controls.Add(_progressBar, 0, 15);
 
         var bottom = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Fill };
         bottom.Controls.Add(_status, 0, 0);
         bottom.Controls.Add(buttons, 0, 1);
-        layout.Controls.Add(bottom, 0, 13);
-        Controls.Add(layout);
+        layout.Controls.Add(bottom, 0, 16);
+        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        scroll.Controls.Add(layout);
+        Controls.Add(scroll);
 
         AcceptButton = _installButton;
         RefreshCredentialStatus();
@@ -194,11 +229,11 @@ internal sealed class InstallerForm : Form
         var installed = false;
         try
         {
-            var url = ValidateConfigurationInputs();
+            var settings = ValidateConfigurationInputs();
             _activeOperation = new CancellationTokenSource();
             SetBusy(true);
             var result = await InstallerEngine.InstallAsync(
-                new InstallOptions(_installDirectory.Text, url),
+                new InstallOptions(_installDirectory.Text, settings.PhotonApiUrl, Port: settings.Port),
                 new Progress<string>(message => _status.Text = message),
                 _activeOperation.Token);
             installed = true;
@@ -242,14 +277,14 @@ internal sealed class InstallerForm : Form
     {
         try
         {
-            var url = ValidateConfigurationInputs();
+            var settings = ValidateConfigurationInputs();
             _activeOperation = new CancellationTokenSource();
             SetBusy(true);
-            await InstallerEngine.WriteSettingsAsync(url, _activeOperation.Token);
+            await InstallerEngine.WriteSettingsAsync(settings, _activeOperation.Token);
             ApplyCredentialReplacements();
             ClearCredentialEntryFields();
             RefreshCredentialStatus();
-            _status.Text = "Configuration saved.";
+            _status.Text = "Configuration saved. Stop and start OpenView to apply changes.";
         }
         catch (OperationCanceledException) { _status.Text = "Configuration save cancelled."; }
         catch (Exception error)
@@ -266,12 +301,13 @@ internal sealed class InstallerForm : Form
         }
     }
 
-    private string ValidateConfigurationInputs()
+    private AppSettings ValidateConfigurationInputs()
     {
         var url = InstallerEngine.ValidatePhotonUrl(_photonUrl.Text);
+        var port = AppSettings.ParsePort(_port.Text);
         if (_replaceFcc.Checked) CredentialManager.ValidateFccReplacement(_fccUsername.Text, _fccToken.Text);
         if (_replaceOpenCellId.Checked) CredentialManager.ValidateOpenCellIdReplacement(_openCellIdToken.Text);
-        return url;
+        return new AppSettings(url, port);
     }
 
     private void ApplyCredentialReplacements()
@@ -360,6 +396,7 @@ internal sealed class InstallerForm : Form
     {
         _installDirectory.Enabled = !busy;
         _browseButton.Enabled = !busy;
+        _port.Enabled = !busy;
         _photonUrl.Enabled = !busy;
         _replaceFcc.Enabled = !busy;
         _replaceOpenCellId.Enabled = !busy;

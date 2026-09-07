@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.1",
-  "tag": "v0.1.1",
+  "version": "0.1.2",
+  "tag": "v0.1.2",
   "repository": "jamezcody/openview-earth",
   "dataArchive": {
-    "name": "openview-data-v0.1.1.tar.gz",
-    "url": "https://github.com/jamezcody/openview-earth/releases/download/v0.1.1/openview-data-v0.1.1.tar.gz",
+    "name": "openview-data-v0.1.2.tar.gz",
+    "url": "https://github.com/jamezcody/openview-earth/releases/download/v0.1.2/openview-data-v0.1.2.tar.gz",
     "sha256": "fc07df707d3c1f3aa12ff9a808d1a90929e07f1a435ee355e392c4f3af110ce8",
     "compressedBytes": 167170511,
     "fileCount": 62193,
@@ -15,10 +15,10 @@
     "maximumUncompressedBytes": 2147483648
   },
   "runtimeArchive": {
-    "name": "openview-runtime-win-x64-v0.1.1.tar.gz",
-    "url": "https://github.com/jamezcody/openview-earth/releases/download/v0.1.1/openview-runtime-win-x64-v0.1.1.tar.gz",
-    "sha256": "fc07a5eb5a569daa6d1eadf6de10ab71b8f4b4f4f4c0df01d3b74788851a496f",
-    "compressedBytes": 62499889,
+    "name": "openview-runtime-win-x64-v0.1.2.tar.gz",
+    "url": "https://github.com/jamezcody/openview-earth/releases/download/v0.1.2/openview-runtime-win-x64-v0.1.2.tar.gz",
+    "sha256": "1a6e312fffc2aac957d09625bb7fb1678c6684e1095486c21dfdf38f37c7f5b0",
+    "compressedBytes": 62499900,
     "fileCount": 2077,
     "uncompressedBytes": 190841630,
     "maximumCompressedBytes": 268435456,

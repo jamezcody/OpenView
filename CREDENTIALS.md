@@ -4,16 +4,16 @@ Credential names in this document are identifiers, never credential values.
 
 ## No key is required to run OpenView
 
-The browser, Worker, included prepared datasets, base maps, and local fallback imagery require no user API key. The v0.1.1 build contains no non-empty Cesium Ion token, Worker secret binding, committed environment file, FCC credential, or OpenCellID credential.
+The browser, Worker, included prepared datasets, base maps, and local fallback imagery require no user API key. The release contains no non-empty Cesium Ion token, Worker secret binding, committed environment file, FCC credential, or OpenCellID credential.
 
 ## Inventory
 
-| Name                   | Used by v0.1.1 runtime | Classification     | Purpose                                          |
-| ---------------------- | ---------------------: | ------------------ | ------------------------------------------------ |
-| `PHOTON_API_URL`       |               Optional | Non-secret setting | Select an operator-managed HTTPS Photon endpoint |
-| `FCC_USERNAME`         |                     No | Account identifier | Separate offline FCC dataset acquisition         |
-| `FCC_API_TOKEN`        |                     No | Secret             | Separate offline FCC dataset acquisition         |
-| `OPENCELLID_API_TOKEN` |                     No | Secret             | Separate offline OpenCellID acquisition          |
+| Name                   | Used by runtime | Classification     | Purpose                                          |
+| ---------------------- | --------------: | ------------------ | ------------------------------------------------ |
+| `PHOTON_API_URL`       |        Optional | Non-secret setting | Select an operator-managed HTTPS Photon endpoint |
+| `FCC_USERNAME`         |              No | Account identifier | Separate offline FCC dataset acquisition         |
+| `FCC_API_TOKEN`        |              No | Secret             | Separate offline FCC dataset acquisition         |
+| `OPENCELLID_API_TOKEN` |              No | Secret             | Separate offline OpenCellID acquisition          |
 
 The acquisition tools are not included in this release. Prepared-data reload buttons only reread local release manifests; they never contact FCC or OpenCellID acquisition services.
 
@@ -29,6 +29,8 @@ The optional advanced installer page stores offline-refresh credentials as curre
 Secret inputs are masked. Values are not written to the installation directory, `settings.json`, logs, command-line arguments, browser storage, release archives, or Git.
 
 The optional non-secret `PHOTON_API_URL` setting is stored under `%LOCALAPPDATA%\OpenView\config\settings.json`. It must be an absolute HTTPS URL with no user information, query string, or fragment. Do not put a credential in any part of this URL.
+
+The installer also stores the non-secret server `port` in that settings file. It defaults to `8787` and accepts integers from `1` to `65535`, except ports blocked by browsers. Existing settings without a port continue to use `8787`. After saving a new port in the controller's **Settings**, stop and start the server to apply it. The server continues to bind only to `127.0.0.1` on this computer.
 
 GitHub and Cloudflare authentication are maintainer concerns, never installer inputs. Use their official credential managers or CLI authentication; the OpenView installer never requests or stores them.
 
