@@ -70,7 +70,7 @@ internal static class SelfTest
         var temporary = Directory.CreateTempSubdirectory("OpenView-Shortcut-Test-").FullName;
         try
         {
-            var installation = Path.Combine(temporary, "Installation with spaces");
+            var installation = Path.Combine(temporary, "Installation with spaces ü");
             Directory.CreateDirectory(installation);
             var executable = Path.Combine(installation, InstallerEngine.InstalledExecutableName);
             File.WriteAllText(executable, "shortcut target fixture");
@@ -81,6 +81,13 @@ internal static class SelfTest
                 var path = Path.Combine(temporary, ShellShortcuts.FileName(browser));
                 ShellShortcuts.WithShortcut(path, shortcut =>
                 {
+                    if (browser)
+                    {
+                        if ((string)shortcut.TargetPath != LauncherForm.GetLocalUrl(AppSettings.DefaultPort)
+                            || File.ReadAllText(path) != ShellShortcuts.BrowserContent(installation, AppSettings.DefaultPort))
+                            throw new InvalidOperationException("The browser shortcut does not open the direct local URL.");
+                        return;
+                    }
                     if (!string.Equals((string)shortcut.TargetPath, executable, StringComparison.OrdinalIgnoreCase)
                         || (string)shortcut.Arguments != ShellShortcuts.Arguments(browser)
                         || !((string)shortcut.IconLocation).StartsWith(executable, StringComparison.OrdinalIgnoreCase))
@@ -92,6 +99,32 @@ internal static class SelfTest
                 ShellShortcuts.RemoveOwned(temporary, installation, browser);
                 if (File.Exists(path)) throw new InvalidOperationException("An owned shortcut was not removed.");
             }
+            var browserPath = Path.Combine(temporary, ShellShortcuts.FileName(true));
+            ShellShortcuts.RefreshBrowserIfOwned(temporary, installation, 8080);
+            if (File.Exists(browserPath)) throw new InvalidOperationException("An unselected browser shortcut was created.");
+            var legacyPath = Path.Combine(temporary, ShellShortcuts.LegacyBrowserFileName);
+            ShellShortcuts.WithShortcut(legacyPath, shortcut =>
+            {
+                shortcut.TargetPath = executable;
+                shortcut.Arguments = "--browser";
+                shortcut.Save();
+            });
+            ShellShortcuts.RefreshBrowserIfOwned(temporary, installation, 8080);
+            if (File.Exists(legacyPath) || File.ReadAllText(browserPath) != ShellShortcuts.BrowserContent(installation, 8080))
+                throw new InvalidOperationException("The legacy browser shortcut was not migrated.");
+            ShellShortcuts.RefreshBrowserIfOwned(temporary, installation, 9999);
+            ShellShortcuts.WithShortcut(browserPath, shortcut =>
+            {
+                if ((string)shortcut.TargetPath != "http://127.0.0.1:9999/")
+                    throw new InvalidOperationException("The browser shortcut port was not updated. Windows target: " + (string)shortcut.TargetPath
+                        + "; file matches new port: " + (File.ReadAllText(browserPath) == ShellShortcuts.BrowserContent(installation, 9999)));
+            });
+            File.WriteAllText(browserPath, "[InternetShortcut]\r\nURL=https://example.com/\r\n");
+            ShellShortcuts.RefreshBrowserIfOwned(temporary, installation, 8080);
+            ShellShortcuts.RemoveOwned(temporary, installation, true);
+            if (!File.Exists(browserPath) || !File.ReadAllText(browserPath).Contains("https://example.com/"))
+                throw new InvalidOperationException("A modified browser shortcut was overwritten or deleted.");
+            ExpectFailure(() => ShellShortcuts.Create(temporary, installation, true));
         }
         finally
         {

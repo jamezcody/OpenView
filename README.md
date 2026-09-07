@@ -4,11 +4,11 @@
 
 OpenView is an interactive 3D Earth explorer for satellite, street, and topographic maps with parks, campsites, radio sites, estimated cell locations, FCC coverage, addresses, parcels, satellites, aircraft, and ships.
 
-Version 0.1.3 adds the OpenView logo, optional desktop shortcuts, and automatic setup closing. It preserves configurable ports and the map fixes from earlier releases. See [release notes](RELEASE_v0.1.3.md).
+Version 0.1.4 makes the desktop browser shortcut open a direct local URL instead of invoking the unsigned launcher. It preserves the OpenView branding, configurable ports, installer auto-close, and previous map fixes. See [release notes](RELEASE_v0.1.4.md).
 
 ## Install on Windows
 
-Download `OpenView-Setup-v0.1.3.exe` and `SHA256SUMS.txt` from the [v0.1.3 release](https://github.com/jamezcody/OpenView/releases/tag/v0.1.3).
+Download `OpenView-Setup-v0.1.4.exe` and `SHA256SUMS.txt` from the [v0.1.4 release](https://github.com/jamezcody/OpenView/releases/tag/v0.1.4).
 
 The setup executable includes its own .NET runtime, runs per user without elevation, and verifies checksum-pinned Windows x64 runtime and data packages. Put both release archives beside setup for an offline install; when a sidecar is absent, setup downloads that exact asset. The installed app uses the system's Node.js runtime. OpenView itself needs no API key. An advanced page can save optional offline data-refresh credentials in Windows Credential Manager for the current Windows user; those credentials are never put in the site, browser, logs, command line, or a plaintext file.
 
@@ -19,7 +19,7 @@ Requirements:
 - Internet access only when a release archive is not beside setup
 - 5 GB of free disk space recommended (setup keeps a verified backup during upgrades)
 
-The v0.1.3 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it.
+The v0.1.4 installer is unsigned because this release does not yet have an Authenticode certificate. Verify its SHA-256 checksum before running it.
 
 ### Choose the server port
 
@@ -27,15 +27,17 @@ Enter **Server port** before clicking **Install / repair**. The default is `8787
 
 Setup accepts whole numbers from `1` to `65535`, except ports blocked by web browsers. If the selected port is unavailable, the controller explains how to choose another.
 
-To upgrade from v0.1.1 or v0.1.2, close the OpenView controller, run the downloaded v0.1.3 setup executable, keep the existing installation folder, choose a port, and click **Install / repair**. Existing settings without a port use `8787`; saved optional credentials are preserved unless their replacement boxes are checked.
+To upgrade from v0.1.1, v0.1.2, or v0.1.3, close the OpenView controller, run the downloaded v0.1.4 setup executable, keep the existing installation folder, choose a port, and click **Install / repair**. Existing settings without a port use `8787`; saved optional credentials are preserved unless their replacement boxes are checked.
 
 To change the port later, open **Settings** in the OpenView controller, edit **Server port**, and click **Save configuration**. Click **Stop**, then **Start** in the controller to apply it. Until the server restarts, **Open browser** continues to use its active port.
 
 The selected port and optional Photon URL are saved in `%LOCALAPPDATA%\OpenView\config\settings.json`.
 
-### Desktop shortcuts and setup completion (v0.1.3)
+### Desktop shortcuts and setup completion
 
 Before installing, optionally select **Add OpenView launcher shortcut to the desktop** and/or **Add OpenView browser shortcut to the desktop**. Both are off by default. The launcher shortcut starts the server/controller; the browser shortcut opens your saved port in the default browser and requires the server to be running. The executable stays in the installation folder—desktop links are not separate copies. Unrelated desktop links are preserved.
+
+As of v0.1.4, **OpenView Browser** is a locally created `.url` shortcut, not a link to `OpenView.exe --browser`. Existing OpenView-owned browser links are migrated on upgrade, and saving a new server port updates the owned URL shortcut. Stop/start the server after changing ports. This does not disable Smart App Control or establish trust for the unsigned installer/server; a separate block on those executables still requires a signing solution.
 
 Setup closes automatically on success. If **Launch OpenView after installation** is selected, it opens the controller before closing. Warnings are displayed for acknowledgment; installation failures or cancellation leave setup open.
 
@@ -98,7 +100,7 @@ npm run data:build
 ./installer/build.ps1
 ```
 
-`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.1.3`.
+`release/release-manifest.json` is the authoritative archive name, URL, checksum, size, and safety-limit record. Generated archives and executables stay ignored under `artifacts/v0.1.4`.
 
 Release archives and the installer are prepared and checked locally before publication. The **Reproduce release assets** workflow is deliberately post-publication: it installs the already-published pinned data, rebuilds both archives, requires their names, sizes, and SHA-256 digests to match the checked-in manifest, self-tests both sidecars, and uploads the complete reproducibility artifact. It cannot bootstrap the initial data release and never publishes a GitHub Release automatically.
 
@@ -112,6 +114,7 @@ Details:
 - [Park boundaries](PARK_BOUNDARIES.md)
 - [Unified search](UNIFIED_SEARCH.md)
 - [v0.1.3 release notes](RELEASE_v0.1.3.md)
+- [v0.1.4 release notes](RELEASE_v0.1.4.md)
 - [v0.1.2 release notes](RELEASE_v0.1.2.md)
 - [v0.1.1 release notes](RELEASE_v0.1.1.md)
 

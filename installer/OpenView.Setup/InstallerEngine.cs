@@ -172,7 +172,7 @@ internal static partial class InstallerEngine
             {
                 progress.Report("Saving local configuration...");
                 try { await WriteSettingsAsync(settings, cancellationToken); }
-                catch (Exception error) { warnings.Add($"Settings were not saved: {error.Message}"); }
+                catch (Exception error) { warnings.Add($"Configuration update warning: {error.Message}"); }
                 try { CreateStartMenuShortcut(target); }
                 catch (Exception error) { warnings.Add($"The Start menu shortcut was not created: {error.Message}"); }
                 var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
@@ -183,7 +183,7 @@ internal static partial class InstallerEngine
                 }
                 if (options.DesktopBrowser)
                 {
-                    try { ShellShortcuts.Create(desktop, target, browser: true); }
+                    try { ShellShortcuts.Create(desktop, target, browser: true, port: LoadSettings().Port); }
                     catch (Exception error) { warnings.Add($"The desktop browser shortcut was not created: {error.Message}"); }
                 }
                 try { RegisterUninstaller(target); }
@@ -277,6 +277,19 @@ internal static partial class InstallerEngine
             await File.WriteAllTextAsync(temporary, content, cancellationToken);
             EnsureNoReparsePointsThrough(SettingsPath);
             File.Move(temporary, SettingsPath, true);
+            var installation = GetRegisteredOwnedInstallationDirectory();
+            if (installation is not null)
+            {
+                try
+                {
+                    ShellShortcuts.RefreshBrowserIfOwned(
+                        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), installation, settings.Port);
+                }
+                catch (Exception error)
+                {
+                    throw new InvalidOperationException("Settings were saved, but the browser shortcut could not be updated: " + error.Message, error);
+                }
+            }
         }
         finally
         {
