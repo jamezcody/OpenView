@@ -32,6 +32,66 @@ The v0.2.0 installer is unsigned because this release does not yet have an Authe
 4. Click **Install / repair**. Successful setup closes automatically; the launch option opens the controller.
 5. In the controller, start OpenView and open the browser. Enable the layers you want; overlays start off.
 
+### Launch an installed copy through Node.js
+
+For an already installed OpenView v0.2.0, `installer/launch-local.mjs` starts the
+local server through your system Node.js runtime and opens the default browser
+after the home page and installed favicon checksum pass readiness checks. It
+does not execute the unsigned OpenView controller or change Windows security
+settings. Windows can still check Node.js and supporting runtime executables;
+this does not establish trust for the unsigned installer.
+
+From a checkout of this repository, run the following in PowerShell. Change
+`$ovInstall` if you installed OpenView in a different folder:
+
+```powershell
+$ovInstall = Join-Path $env:LOCALAPPDATA 'Programs\OpenView'
+Copy-Item -LiteralPath '.\installer\launch-local.mjs' -Destination $ovInstall
+& node (Join-Path $ovInstall 'launch-local.mjs')
+```
+
+To update the desktop shortcut, run this separately after confirming that the
+launcher works. It preserves the old shortcut in the installation folder and
+refuses to replace a shortcut that points to another program:
+
+```powershell
+$ovNode = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+$ovLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'OpenView.lnk'
+$ovShell = New-Object -ComObject WScript.Shell
+$ovShortcut = $ovShell.CreateShortcut($ovLink)
+if (Test-Path -LiteralPath $ovLink) {
+    $ovOriginal = Join-Path $ovInstall 'OpenView.exe'
+    if ($ovShortcut.TargetPath -ne $ovOriginal) {
+        throw 'The shortcut does not point to this installation; inspect it before replacing it.'
+    }
+    $ovBackup = Join-Path $ovInstall 'OpenView-original-shortcut.lnk'
+    if (-not (Test-Path -LiteralPath $ovBackup)) {
+        Copy-Item -LiteralPath $ovLink -Destination $ovBackup
+    }
+}
+$ovShortcut.TargetPath = $ovNode
+$ovShortcut.Arguments = '"' + (Join-Path $ovInstall 'launch-local.mjs') + '"'
+$ovShortcut.WorkingDirectory = $ovInstall
+$ovShortcut.IconLocation = (Join-Path $ovInstall 'OpenView.exe') + ',0'
+$ovShortcut.Description = 'OpenView in your browser; Ctrl+C in its console stops the server.'
+$ovShortcut.WindowStyle = 7
+$ovShortcut.Save()
+```
+
+The launcher uses the saved port and Photon URL from
+`%LOCALAPPDATA%\OpenView\config\settings.json`; the default port is `8787`.
+Saved ship credentials and the existing OSM library continue to use the local
+service's normal storage. Startup can take about a minute. Once ready, another
+shortcut click opens the running instance. The server console starts minimized;
+restore it and press **Ctrl+C** to stop OpenView before upgrading or switching
+launchers. Closing the browser leaves the server running.
+
+This launcher has no desktop Start/Stop/Settings window. Use the existing settings
+file for port/Photon changes while the service is stopped; AISStream key setup
+still uses the existing credential workflow. Setup repair or upgrade may replace
+the shortcut with the controller shortcut, so repeat the steps above if needed.
+The published v0.2.0 installer and archives do not include this companion launcher.
+
 ### Set up the AISStream API key
 
 1. Sign in to [AISStream Account](https://aisstream.io/account) and create your own API key. Keep it private; new keys are shown once.

@@ -61,6 +61,8 @@ next-env.d.ts
 /installer/**/bin/
 /installer/**/obj/
 /installer/payload/
+/installer/OpenView-original-shortcut.lnk
+/installer/local-launch-test.*.log
 /runtime/node_modules/
 /.openview-data-backup-*/
 /.openview-data-staging-*/
