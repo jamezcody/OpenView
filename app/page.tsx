@@ -1,10 +1,10 @@
 'use client';
 /* oxlint-disable react/react-compiler -- The React Compiler transform is not installed; refs intentionally bridge the imperative Cesium and feed lifecycles. */
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Globe2,
-  Orbit,
   Layers,
   Building2,
   ArrowUpRight,
@@ -1021,7 +1021,14 @@ export default function Home() {
     <main className="observatory dark">
       <header className="topbar">
         <Link className="brand" href="/">
-          <Orbit size={29} />
+          <Image
+            src="/OpenView.ico"
+            unoptimized
+            alt=""
+            className="brand-logo"
+            width={36}
+            height={36}
+          />
           <span>
             Open<span>View</span>
           </span>

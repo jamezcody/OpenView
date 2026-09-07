@@ -29,6 +29,14 @@ internal sealed class InstallerForm : Form
         Checked = true,
         Text = "Launch OpenView after installation",
     };
+    private readonly CheckBox _desktopLauncher = new()
+    {
+        AutoSize = true, Text = "Add OpenView launcher shortcut to the desktop",
+    };
+    private readonly CheckBox _desktopBrowser = new()
+    {
+        AutoSize = true, Text = "Add OpenView browser shortcut to the desktop (server must be running)",
+    };
     private readonly Button _installButton = new() { AutoSize = true, Text = "Install / repair" };
     private readonly Button _saveButton = new() { AutoSize = true, Text = "Save configuration" };
     private readonly Button _launchButton = new() { AutoSize = true, Text = "Launch installed app" };
@@ -54,6 +62,7 @@ internal sealed class InstallerForm : Form
     public InstallerForm()
     {
         Text = $"OpenView {ReleaseConfig.Current.Version} Setup";
+        Icon = Branding.CreateIcon();
         ClientSize = new Size(780, Math.Min(770, (Screen.PrimaryScreen?.WorkingArea.Height ?? 870) - 100));
         MinimumSize = new Size(740, 540);
         StartPosition = FormStartPosition.CenterScreen;
@@ -140,12 +149,19 @@ internal sealed class InstallerForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        layout.Controls.Add(new Label
+        var heading = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        heading.Controls.Add(new PictureBox
+        {
+            Image = Branding.Logo, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(52, 52),
+            AccessibleName = "OpenView logo",
+        });
+        heading.Controls.Add(new Label
         {
             AutoSize = true,
             Font = new Font(Font.FontFamily, 20F, FontStyle.Bold),
             Text = "OpenView setup and settings",
-        }, 0, 0);
+        });
+        layout.Controls.Add(heading, 0, 0);
         layout.Controls.Add(new Label
         {
             AutoSize = true,
@@ -183,7 +199,12 @@ internal sealed class InstallerForm : Form
             Text = "Optional credentials are only for offline acquisition tools. Check a replacement box to overwrite a saved credential; unchecked credentials are preserved.",
         }, 0, 12);
         layout.Controls.Add(credentials, 0, 13);
-        layout.Controls.Add(_launchAfterInstall, 0, 14);
+        var installOptions = new FlowLayoutPanel
+        {
+            AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false,
+        };
+        installOptions.Controls.AddRange([_desktopLauncher, _desktopBrowser, _launchAfterInstall]);
+        layout.Controls.Add(installOptions, 0, 14);
         layout.Controls.Add(_progressBar, 0, 15);
 
         var bottom = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Dock = DockStyle.Fill };
@@ -233,7 +254,8 @@ internal sealed class InstallerForm : Form
             _activeOperation = new CancellationTokenSource();
             SetBusy(true);
             var result = await InstallerEngine.InstallAsync(
-                new InstallOptions(_installDirectory.Text, settings.PhotonApiUrl, Port: settings.Port),
+                new InstallOptions(_installDirectory.Text, settings.PhotonApiUrl, Port: settings.Port,
+                    DesktopLauncher: _desktopLauncher.Checked, DesktopBrowser: _desktopBrowser.Checked),
                 new Progress<string>(message => _status.Text = message),
                 _activeOperation.Token);
             installed = true;
@@ -251,9 +273,10 @@ internal sealed class InstallerForm : Form
             var message = $"OpenView {ReleaseConfig.Current.Version} was installed successfully.";
             if (configurationWarnings.Count != 0)
                 message += Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, configurationWarnings.Select(w => "• " + w));
-            MessageBox.Show(this, message, "OpenView Setup", MessageBoxButtons.OK,
-                configurationWarnings.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            if (configurationWarnings.Count != 0)
+                MessageBox.Show(this, message, "OpenView Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             if (_launchAfterInstall.Checked) StartInstalledLauncher(result.InstallDirectory);
+            _closeWhenOperationEnds = true;
         }
         catch (OperationCanceledException)
         {
@@ -403,6 +426,8 @@ internal sealed class InstallerForm : Form
         _saveButton.Enabled = !busy;
         _removeCredentialsButton.Enabled = !busy;
         _launchAfterInstall.Enabled = !busy;
+        _desktopLauncher.Enabled = !busy;
+        _desktopBrowser.Enabled = !busy;
         if (busy)
         {
             _installButton.Enabled = false;

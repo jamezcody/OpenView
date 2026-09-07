@@ -10,7 +10,7 @@ $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schemaVersion -ne 1 -or $manifest.version -notmatch '^\d+\.\d+\.\d+$') {
     throw 'The release manifest identity is invalid.'
 }
-if ($manifest.tag -ne "v$($manifest.version)" -or $manifest.repository -ne 'jamezcody/openview-earth') {
+if ($manifest.tag -ne "v$($manifest.version)" -or $manifest.repository -ne 'jamezcody/OpenView') {
     throw 'The release manifest tag or repository is invalid.'
 }
 

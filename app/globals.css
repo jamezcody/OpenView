@@ -104,8 +104,11 @@ button svg {
   align-items: center;
   gap: 12px;
 }
-.brand > svg {
-  color: var(--primary);
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 .brand > span:first-of-type {
   font-weight: 600;

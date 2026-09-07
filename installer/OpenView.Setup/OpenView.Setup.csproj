@@ -8,6 +8,7 @@
     <AssemblyName>OpenView.Setup</AssemblyName>
     <RootNamespace>OpenView.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\public\OpenView.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -21,6 +22,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\public\OpenView.ico" LogicalName="OpenView.Setup.icon.ico" />
+    <EmbeddedResource Include="..\..\public\OpenView_logo.png" LogicalName="OpenView.Setup.logo.png" />
     <EmbeddedResource Include="..\..\release\release-manifest.json"
                       LogicalName="OpenView.Setup.release.release-manifest.json" />
   </ItemGroup>

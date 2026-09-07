@@ -74,7 +74,7 @@ internal static class Uninstaller
             var warnings = new List<string>();
             try { CredentialManager.RemoveAll(); }
             catch (Exception error) { warnings.Add(error.Message); }
-            warnings.AddRange(InstallerEngine.RemoveShellAndUserDataBestEffort());
+            warnings.AddRange(InstallerEngine.RemoveShellAndUserDataBestEffort(target));
             if (warnings.Count != 0)
             {
                 Console.Error.WriteLine("OpenView was removed, but some per-user integration remains: " + string.Join("; ", warnings));

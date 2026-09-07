@@ -17,7 +17,9 @@ internal sealed record InstallOptions(
     string InstallDirectory,
     string? PhotonApiUrl,
     bool AcceptanceTest = false,
-    int Port = AppSettings.DefaultPort);
+    int Port = AppSettings.DefaultPort,
+    bool DesktopLauncher = false,
+    bool DesktopBrowser = false);
 internal sealed record InstallResult(string InstallDirectory, IReadOnlyList<string> Warnings);
 internal enum ArchiveKind { Runtime, Data }
 
@@ -173,6 +175,17 @@ internal static partial class InstallerEngine
                 catch (Exception error) { warnings.Add($"Settings were not saved: {error.Message}"); }
                 try { CreateStartMenuShortcut(target); }
                 catch (Exception error) { warnings.Add($"The Start menu shortcut was not created: {error.Message}"); }
+                var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                if (options.DesktopLauncher)
+                {
+                    try { ShellShortcuts.Create(desktop, target, browser: false); }
+                    catch (Exception error) { warnings.Add($"The desktop launcher shortcut was not created: {error.Message}"); }
+                }
+                if (options.DesktopBrowser)
+                {
+                    try { ShellShortcuts.Create(desktop, target, browser: true); }
+                    catch (Exception error) { warnings.Add($"The desktop browser shortcut was not created: {error.Message}"); }
+                }
                 try { RegisterUninstaller(target); }
                 catch (Exception error) { warnings.Add($"Windows app registration was not updated: {error.Message}"); }
             }
@@ -1120,6 +1133,7 @@ internal static partial class InstallerEngine
             dynamicShortcut.TargetPath = Path.Combine(target, InstalledExecutableName);
             dynamicShortcut.Arguments = "--launch";
             dynamicShortcut.WorkingDirectory = target;
+            dynamicShortcut.IconLocation = Path.Combine(target, InstalledExecutableName) + ",0";
             dynamicShortcut.Description = $"OpenView {ReleaseConfig.Current.Version}";
             EnsureNoReparsePointsThrough(directory);
             EnsureNoReparsePointsThrough(shortcutPath);
@@ -1147,9 +1161,20 @@ internal static partial class InstallerEngine
         key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
     }
 
-    internal static IReadOnlyList<string> RemoveShellAndUserDataBestEffort()
+    internal static IReadOnlyList<string> RemoveShellAndUserDataBestEffort(string installation)
     {
         var warnings = new List<string>();
+        // The validated installation has already been removed by the uninstaller.
+        // Use its known path rather than rediscovering a now-missing marker.
+        if (!string.IsNullOrWhiteSpace(installation))
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            foreach (var browser in new[] { false, true })
+            {
+                try { ShellShortcuts.RemoveOwned(desktop, installation, browser); }
+                catch (Exception error) { warnings.Add($"Desktop shortcut cleanup failed: {error.Message}"); }
+            }
+        }
         var startMenu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
             "Programs", "OpenView");
         try
@@ -1219,7 +1244,7 @@ internal static partial class InstallerEngine
         return destination;
     }
 
-    private static void EnsureNoReparsePointsThrough(string path)
+    internal static void EnsureNoReparsePointsThrough(string path)
     {
         var full = Path.GetFullPath(path);
         var current = full;

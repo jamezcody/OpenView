@@ -53,6 +53,14 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         try
         {
+            if (args.Contains("--browser", StringComparer.OrdinalIgnoreCase))
+            {
+                InstallerEngine.ValidateInstalledLayout(AppContext.BaseDirectory);
+                var settings = InstallerEngine.LoadSettings();
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    LauncherForm.GetLocalUrl(settings.Port)) { UseShellExecute = true });
+                return 0;
+            }
             if (args.Contains("--launch", StringComparer.OrdinalIgnoreCase))
             {
                 Application.Run(new LauncherForm());

@@ -71,7 +71,7 @@ internal static partial class ReleaseConfig
             || string.IsNullOrWhiteSpace(manifest.Tag)
             || string.IsNullOrWhiteSpace(manifest.Repository))
             throw new InvalidOperationException("The release manifest identity is incomplete.");
-        if (manifest.Repository != "jamezcody/openview-earth"
+        if (manifest.Repository != "jamezcody/OpenView"
             || manifest.Tag != $"v{manifest.Version}")
             throw new InvalidOperationException("The release manifest repository or tag is invalid.");
 

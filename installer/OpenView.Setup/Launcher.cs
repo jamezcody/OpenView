@@ -41,6 +41,7 @@ internal sealed class LauncherForm : Form
         _mutex = mutex;
 
         Text = $"OpenView {ReleaseConfig.Current.Version}";
+        Icon = Branding.CreateIcon();
         Width = 540;
         Height = 190;
         MinimumSize = new Size(480, 170);

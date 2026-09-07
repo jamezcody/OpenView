@@ -51,7 +51,7 @@ const runtimePackageMetadata = JSON.parse(
   await readFile(resolve(root, 'runtime/package.json'), 'utf8'),
 );
 if (
-  packageMetadata.name !== 'openview-earth' ||
+  packageMetadata.name !== 'openview' ||
   packageMetadata.version !== metadata.version ||
   packageMetadata.engines?.node !== '>=22.13.0' ||
   runtimePackageMetadata.name !== 'openview-runtime-win-x64' ||

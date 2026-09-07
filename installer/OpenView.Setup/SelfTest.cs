@@ -43,6 +43,7 @@ internal static class SelfTest
 
         VerifySettingsAndPorts();
         VerifyPortAvailability();
+        VerifyBrandingAndShortcuts();
 
         if (InstallerEngine.NormalizeArchivePath("./dist/client/favicon.svg", false) != "dist/client/favicon.svg")
             throw new InvalidOperationException("Archive-path normalization failed.");
@@ -55,6 +56,48 @@ internal static class SelfTest
         ExpectFailure(() => InstallerEngine.ValidateInstallDirectory(InstallerEngine.UserDataDirectory));
         using (var job = new KillOnCloseJob()) { }
         return 0;
+    }
+
+    private static void VerifyBrandingAndShortcuts()
+    {
+        using var icon = Branding.CreateIcon();
+        if (icon.Width != 32 || icon.Height != 32 || Branding.Logo.Width < 256)
+            throw new InvalidOperationException("The OpenView icon/logo resources are invalid.");
+        var options = new InstallOptions("unused", null);
+        if (options.DesktopLauncher || options.DesktopBrowser)
+            throw new InvalidOperationException("Desktop shortcuts must be opt-in.");
+
+        var temporary = Directory.CreateTempSubdirectory("OpenView-Shortcut-Test-").FullName;
+        try
+        {
+            var installation = Path.Combine(temporary, "Installation with spaces");
+            Directory.CreateDirectory(installation);
+            var executable = Path.Combine(installation, InstallerEngine.InstalledExecutableName);
+            File.WriteAllText(executable, "shortcut target fixture");
+            foreach (var browser in new[] { false, true })
+            {
+                ShellShortcuts.Create(temporary, installation, browser);
+                ShellShortcuts.Create(temporary, installation, browser);
+                var path = Path.Combine(temporary, ShellShortcuts.FileName(browser));
+                ShellShortcuts.WithShortcut(path, shortcut =>
+                {
+                    if (!string.Equals((string)shortcut.TargetPath, executable, StringComparison.OrdinalIgnoreCase)
+                        || (string)shortcut.Arguments != ShellShortcuts.Arguments(browser)
+                        || !((string)shortcut.IconLocation).StartsWith(executable, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("A desktop shortcut has an incorrect target, argument, or icon.");
+                });
+                ShellShortcuts.RemoveOwned(temporary, Path.Combine(temporary, "Another installation"), browser);
+                if (!File.Exists(path)) throw new InvalidOperationException("An unrelated shortcut was removed.");
+                ExpectFailure(() => ShellShortcuts.Create(temporary, Path.Combine(temporary, "Another installation"), browser));
+                ShellShortcuts.RemoveOwned(temporary, installation, browser);
+                if (File.Exists(path)) throw new InvalidOperationException("An owned shortcut was not removed.");
+            }
+        }
+        finally
+        {
+            if (!InstallerEngine.TrySafeDeleteDirectory(temporary, out var error))
+                throw new IOException($"Shortcut test cleanup failed: {error}");
+        }
     }
 
     private static void VerifySettingsAndPorts()

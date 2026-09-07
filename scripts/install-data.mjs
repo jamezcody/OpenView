@@ -42,7 +42,7 @@ function requireSafeManifest() {
     manifest.schemaVersion !== 1 ||
     !/^\d+\.\d+\.\d+$/.test(manifest.version) ||
     manifest.tag !== `v${manifest.version}` ||
-    manifest.repository !== 'jamezcody/openview-earth'
+    manifest.repository !== 'jamezcody/OpenView'
   )
     throw new Error('The release manifest has an unsupported identity.');
   if (
