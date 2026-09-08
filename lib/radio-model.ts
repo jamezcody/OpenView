@@ -90,6 +90,7 @@ export type RadioNode = {
   bounds: number[];
   children: string[];
   summaryPages: RadioFile[];
+  overviewPages?: RadioFile[];
   recordPages: RadioFile[];
 };
 export type RadioSource = {
@@ -245,6 +246,7 @@ export function validateRadioNode(v: unknown, id: string): RadioNode {
       (c) => radioNodeId(c) && c.length === id.length + 1 && c.startsWith(id),
     ) ||
     !files(v.summaryPages) ||
+    (v.overviewPages !== undefined && !files(v.overviewPages)) ||
     !files(v.recordPages) ||
     (v.children.length && v.recordPages.length)
   )

@@ -112,7 +112,7 @@ function splitTarPath(path) {
   return null;
 }
 
-function tarHeader(path, size, type = '0') {
+export function tarHeader(path, size, type = '0') {
   const header = Buffer.alloc(512);
   const split = splitTarPath(path);
   if (!split)

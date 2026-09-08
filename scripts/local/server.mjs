@@ -1,7 +1,7 @@
 import http from 'node:http';
 import net from 'node:net';
 import { createReadStream } from 'node:fs';
-import { mkdir, writeFile, open, rm } from 'node:fs/promises';
+import { mkdir, writeFile, open, rm, stat } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -12,6 +12,8 @@ import { jsonFile, parseRange } from './osm-io.mjs';
 import { runProcess } from './osm-tools.mjs';
 import { ShipService } from './ship-service.mjs';
 import { readShipKey } from './ship-credential.mjs';
+import { RadioSearchService } from './radio-search.mjs';
+import { servePreparedData } from './prepared-data.mjs';
 
 export async function requestJson(request) {
   if (request.headers['content-type']?.split(';')[0] !== 'application/json')
@@ -33,6 +35,20 @@ export function sameOrigin(request) {
     !['cross-site', 'same-site'].includes(request.headers['sec-fetch-site'])
   );
 }
+export async function preparedAssetsRoot(root, dev = false) {
+  if (dev) return join(root, 'public');
+  const prepared = join(root, 'dist/prepared');
+  try {
+    if (!(await stat(prepared)).isDirectory())
+      throw new Error('The prepared-data path must be a directory.');
+    return prepared;
+  } catch (error) {
+    // Compatibility for installations produced before the separate data layout.
+    // Once dist/prepared exists, missing datasets must not fall back to stale ones.
+    if (error.code === 'ENOENT') return join(root, 'dist/client');
+    throw error;
+  }
+}
 function json(response, status, value) {
   response.writeHead(status, {
     'Content-Type': 'application/json',
@@ -41,7 +57,13 @@ function json(response, status, value) {
   });
   response.end(JSON.stringify(value));
 }
-export function createLocalServer(manager, upstreamPort, ships) {
+export function createLocalServer(
+  manager,
+  upstreamPort,
+  ships,
+  radioSearch,
+  preparedRoot,
+) {
   const nonce = randomBytes(32).toString('hex');
   let mutation = false;
   const server = http.createServer(async (request, response) => {
@@ -52,6 +74,46 @@ export function createLocalServer(manager, upstreamPort, ships) {
       });
       return;
     }
+    const pathname = (request.url || '').split('?')[0];
+    // The local index is a disk asset, never a browser download.
+    if (/^\/search\/.*\.sqlite(?:$|\/)/i.test(pathname)) {
+      json(response, 404, {
+        error:
+          'Radio search databases are available through local search only.',
+      });
+      return;
+    }
+    if (pathname === '/local-search/radio') {
+      if (request.method !== 'GET') {
+        json(response, 405, { error: 'Only GET is supported.' });
+        return;
+      }
+      if (!radioSearch) {
+        json(response, 503, {
+          error:
+            'Large radio search requires the installed local OpenView runtime.',
+        });
+        return;
+      }
+      try {
+        const url = new URL(request.url, 'http://localhost');
+        const result = await radioSearch.search(
+          url.searchParams.get('q') || '',
+          Number(url.searchParams.get('limit') || '60'),
+          url.searchParams.get('radioVersion') || '',
+          url.searchParams.get('searchVersion') || '',
+        );
+        json(response, 200, result);
+      } catch (error) {
+        json(response, 503, { error: error.message });
+      }
+      return;
+    }
+    if (
+      preparedRoot &&
+      (await servePreparedData(request, response, preparedRoot))
+    )
+      return;
     if (ships && (request.url || '').split('?')[0] === '/api/ships') {
       if (request.method !== 'GET') {
         json(response, 405, { error: 'Only GET is supported.' });
@@ -306,6 +368,7 @@ export async function startLocalApp(args = process.argv.slice(2)) {
   let child,
     server,
     ships,
+    radioSearch,
     closing = false;
   const close = async () => {
     if (closing) return;
@@ -313,6 +376,7 @@ export async function startLocalApp(args = process.argv.slice(2)) {
     server?.closeAllConnections();
     server?.close();
     await ships?.close();
+    await radioSearch?.close();
     await manager.close();
     if (child && child.exitCode === null && child.pid) {
       if (process.platform === 'win32') {
@@ -343,7 +407,15 @@ export async function startLocalApp(args = process.argv.slice(2)) {
       },
     });
     await ships.initialize();
-    server = createLocalServer(manager, upstream, ships);
+    const preparedRoot = await preparedAssetsRoot(root, args.includes('--dev'));
+    radioSearch = new RadioSearchService(preparedRoot);
+    server = createLocalServer(
+      manager,
+      upstream,
+      ships,
+      radioSearch,
+      preparedRoot,
+    );
     await new Promise((ok, fail) => {
       server.once('error', fail);
       server.listen(port, '127.0.0.1', ok);

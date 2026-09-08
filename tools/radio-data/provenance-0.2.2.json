@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "openviewRelease": "0.2.2",
+  "scope": "Preserved inputs for the September 2026 additive FCC update. Source records are not unique towers or proof of present operation or authorization validity.",
+  "reproduction": "Supply the exact archived FCC ZIP bytes and original normalized baseline run. Live publisher URLs are mutable. Generated run IDs, times and builder content hashes change output version identifiers.",
+  "inputs": [
+    {
+      "source": "us_uls",
+      "archive": "l_micro.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_micro.zip",
+      "resolved_url": null,
+      "reused_existing_file": true,
+      "size_bytes": 219647775,
+      "sha256": "9f94c17effd6f7da3eff47b87d661a7e6d0a93aebf541c786350d69732890681",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:28:33+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": null,
+      "acquisition_time_note": "Exact acquisition time unavailable; a preserved September 6, 2026 microwave archive was reused and fully revalidated."
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_LMpriv.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMpriv.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMpriv.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:40+00:00",
+      "size_bytes": 423455163,
+      "sha256": "dfcb05f760de08ab37ab3074093acf8daaf232a560e9b89af3b7c73a9571c745",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:46+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:17:55 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_LMcomm.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMcomm.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMcomm.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:35+00:00",
+      "size_bytes": 79153730,
+      "sha256": "4c6cbd92c0ec8f250581c78ca00a11beb5198605d8d32a41dbf04d5926ac5083",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:37+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:21:36 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_cell.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_cell.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_cell.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:31+00:00",
+      "size_bytes": 24597733,
+      "sha256": "c6d33b3984fa02a01cf20c7801c229613108334b6b6420f3da8a1018f091b76c",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:32+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:40:49 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_LMbcast.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMbcast.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_LMbcast.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:29+00:00",
+      "size_bytes": 7150637,
+      "sha256": "731962ca4cf15c35e3a80c98b3dfe978c72097dc2464d13cce4be55a8263a814",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:29+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:22:34 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_paging.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_paging.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_paging.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:31+00:00",
+      "size_bytes": 6569960,
+      "sha256": "cddba4424790c7f8dda0fe24c97e89d3de076489233d0c786d0ba9ffe15ea8fd",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:31+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:42:12 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_coast.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_coast.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_coast.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:30+00:00",
+      "size_bytes": 9912284,
+      "sha256": "db728dc2d27f6113cba968191a1345213390bf4108915f422c1427c77f755ae1",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:30+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:44:52 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_mdsitfs.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_mdsitfs.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_mdsitfs.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:35+00:00",
+      "size_bytes": 14728508,
+      "sha256": "73748f1a5d95a769bbb5fe6394ff74f82380c94a0e0fd87ce5562a7273e565ea",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:36+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:43:55 GMT"
+    },
+    {
+      "source": "us_uls",
+      "archive": "l_market.zip",
+      "canonical_url": "https://data.fcc.gov/download/pub/uls/complete/l_market.zip",
+      "resolved_url": "https://data.fcc.gov/download/pub/uls/complete/l_market.zip",
+      "retrieved_at_utc": "2026-09-07T23:29:35+00:00",
+      "size_bytes": 88073600,
+      "sha256": "1650debba69cbeb9eb4fbc85111fc0e622bba6ff36a8fa3a693fbc2b5ebc9120",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:29:37+00:00",
+      "provenance_landing_page": "https://www.fcc.gov/uls/transactions/daily-weekly",
+      "last_modified": "Sun, 06 Sep 2026 13:39:07 GMT"
+    },
+    {
+      "source": "us_lms",
+      "archive": "lms-09-07-2026_LMS_Dump.zip",
+      "canonical_url": "https://enterpriseefiling.fcc.gov/dataentry/api/download/dbfile/09-07-2026/09-07-2026_LMS_Dump.zip",
+      "resolved_url": "https://enterpriseefiling.fcc.gov/dataentry/api/download/dbfile/09-07-2026/09-07-2026_LMS_Dump.zip",
+      "retrieved_at_utc": "2026-09-07T23:32:40+00:00",
+      "size_bytes": 1648149860,
+      "sha256": "f3b2f1c3a6d4711d61bb64ff0a64b41182b7d11f4ce5536a0b031fda55a5f184",
+      "zip_crc_check": "passed_all_members",
+      "validated_at_utc": "2026-09-07T23:33:02+00:00",
+      "provenance_landing_page": "https://enterpriseefiling.fcc.gov/dataentry/public/tv/lmsDatabase.html",
+      "last_modified": null
+    }
+  ],
+  "baseline": {
+    "run_id": "20260906-112059-4718b2",
+    "database_file": "dataset.sqlite",
+    "database_bytes": 47452160,
+    "database_sha256": "f45a49b64fd6ceacec5edb37f039d2e454279fa18326b9ec62b7da00fa592bcd",
+    "original_report_sha256": "a6dec53ae72a448f6f8e830157511b36e1d40fda0092ea9ea7f1f74ed3d7a0bb",
+    "selected_sources": [
+      "fi_traficom",
+      "pl_uke",
+      "cl_subtel",
+      "global_ourairports",
+      "global_hfcc",
+      "global_satnogs",
+      "global_osm"
+    ],
+    "active_only": false,
+    "counts": {
+      "transmitters": 30297,
+      "candidates": 292,
+      "receivers": 6190
+    },
+    "availability": "Required preserved input; not embedded in this source bundle."
+  },
+  "selection": {
+    "us_uls": {
+      "active_only": true,
+      "archive_count": 9,
+      "counts": {
+        "transmitters": 3487911,
+        "candidates": 718,
+        "receivers": 0
+      }
+    },
+    "us_lms": {
+      "active_only": true,
+      "archive_count": 1,
+      "counts": {
+        "transmitters": 33145,
+        "candidates": 6708,
+        "receivers": 0
+      }
+    }
+  },
+  "prepared": {
+    "radio_version": "radio-fa92b26db98a971f109d",
+    "radio_manifest_sha256": "3ff5f1ec596bf799c0d8b54d8ebe3c96a00f4c5b70a8b7f73730cb14c1a0d691",
+    "combined_database_sha256": "67a0a65e5bd5c9831bca7fe3ed8cb69e6c9ce3a8064bc3bd8c6626beb1598723",
+    "combined_counts": {
+      "transmitters": 3551353,
+      "candidates": 7718,
+      "receivers": 6190
+    },
+    "source_counts": {
+      "cl_subtel": 9085,
+      "fi_traficom": 3396,
+      "global_hfcc": 3322,
+      "global_osm": 292,
+      "global_ourairports": 14490,
+      "global_satnogs": 6190,
+      "pl_uke": 4,
+      "us_lms": 39853,
+      "us_uls": 3488629
+    },
+    "search_version": "search-471e585387c4f3caf437",
+    "park_release": "parks-9962df489f64eb765419",
+    "search_files": [
+      {
+        "bytes": 6101401600,
+        "count": 3565261,
+        "encoding": "radio-sqlite-v1",
+        "file": "radio.sqlite",
+        "kind": "radio",
+        "sha256": "f109a3bafb49ba440aecabf079096edb2191b6b783ad2b82ba714f07fe75eba5"
+      },
+      {
+        "bytes": 2692547,
+        "count": 6232,
+        "file": "parks.json",
+        "kind": "parks",
+        "sha256": "3ae7612e968ed2cc6ab6e2f0fba7b4c809de96f1e475f8c175c4726db5d10bf0"
+      }
+    ]
+  }
+}

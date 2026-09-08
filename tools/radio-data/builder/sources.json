@@ -1,0 +1,218 @@
+{
+  "us_uls": {
+    "name": "United States — FCC ULS",
+    "country": "US",
+    "mode": "automatic",
+    "url": "https://www.fcc.gov/uls/transactions/daily-weekly",
+    "scope": "Site-based wireless licences; excludes mobile locations and receive-only sites."
+  },
+  "us_lms": {
+    "name": "United States — FCC LMS broadcast",
+    "country": "US",
+    "mode": "automatic",
+    "url": "https://enterpriseefiling.fcc.gov/dataentry/public/tv/lmsDatabase.html",
+    "scope": "Broadcast engineering records; application and authorization status retained."
+  },
+  "us_icfs": {
+    "name": "United States — FCC ICFS earth stations",
+    "country": "US",
+    "mode": "import",
+    "url": "https://fccprod.servicenowservices.com/icfs",
+    "scope": "Import an exported flat table of earth-station transmitting locations. Legacy IBFS archives are not treated as current ICFS coverage."
+  },
+  "us_els": {
+    "name": "United States — FCC experimental",
+    "country": "US",
+    "mode": "import",
+    "url": "https://apps.fcc.gov/oetcf/els/reports/GenericSearch.cfm",
+    "scope": "Import a flat table of experimental transmitter locations. No verified unrestricted bulk download."
+  },
+  "ca_ised": {
+    "name": "Canada — ISED authorizations",
+    "country": "CA",
+    "mode": "automatic",
+    "url": "https://ised-isde.canada.ca/site/spectrum-management-system/en/spectrum-management-system-data/download-sms-data",
+    "scope": "TAFL All Services plus terrestrial and satellite spectrum site extracts."
+  },
+  "au_acma": {
+    "name": "Australia — ACMA RRL",
+    "country": "AU",
+    "mode": "automatic",
+    "url": "https://cdn.acma.gov.au/offline-rrl/index.html",
+    "scope": "RRL transmit devices joined to sites and licences; excludes mobile classes."
+  },
+  "gb_ofcom": {
+    "name": "United Kingdom — Ofcom WTR",
+    "country": "GB",
+    "mode": "automatic",
+    "url": "https://www.ofcom.org.uk/spectrum/frequencies/spectrum-information-portal",
+    "scope": "Published WTR records with transmitting locations. Not a complete cellular or broadcast inventory."
+  },
+  "fr_anfr": {
+    "name": "France — ANFR installations",
+    "country": "FR",
+    "mode": "automatic",
+    "url": "https://www.data.gouv.fr/datasets/donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1/",
+    "scope": "Radio installations above 5 W; excludes civil aviation, Defence and Interior installations."
+  },
+  "br_anatel": {
+    "name": "Brazil — Anatel licensed stations",
+    "country": "BR",
+    "mode": "automatic",
+    "url": "https://www.gov.br/anatel/pt-br/dados/dados-abertos",
+    "scope": "Published licensed-station archive; keeps fixed transmitting entries with coordinates."
+  },
+  "nz_rrf": {
+    "name": "New Zealand — RSM RRF",
+    "country": "NZ",
+    "mode": "import",
+    "url": "https://www.rsm.govt.nz/licensing/how-do-i/use-the-rrf/extract-data-from-the-rrf/extracting-licence-data",
+    "scope": "RRF exports require an RSM-approved account and RealMe sign-in. Export each result page, then import CSV files."
+  },
+  "fi_traficom": {
+    "name": "Finland — Traficom radio and TV",
+    "country": "FI",
+    "mode": "automatic",
+    "url": "https://tieto.traficom.fi/en/open-data",
+    "native_extensions": [".json"],
+    "scope": "Daily radio and TV broadcast licence data, with EUREF-FIN coordinates. Downloads every API page and checks the reported count; excludes other radio services."
+  },
+  "dk_mastedatabasen": {
+    "name": "Denmark — Mastedatabasen",
+    "country": "DK",
+    "mode": "automatic",
+    "url": "https://www.mastedatabasen.dk/viskort/ContentPages/DataFraDatabasen.aspx?callingapp=mastedb",
+    "native_extensions": [".json"],
+    "scope": "Published existing antenna-site records. Mobile service sites are transmitting records; unspecified services remain candidates. Planned coordinates are withheld by the publisher. Nominal bands stay in details, not exact-frequency columns."
+  },
+  "ch_bakom": {
+    "name": "Switzerland — BAKOM broadcast",
+    "country": "CH",
+    "mode": "automatic",
+    "url": "https://www.bakom.admin.ch/de/standorte-von-sendeanlagen",
+    "native_extensions": [".zip", ".csv"],
+    "scope": "FM concessions, FM GE84 coordination records, and DAB/DVB broadcast exports; includes correctly labelled foreign sites. Coordination-only entries are candidates. FM snapshots can be older than digital exports. Does not download cellular map data."
+  },
+  "nl_rdi": {
+    "name": "Netherlands — RDI cellular antennas",
+    "country": "NL",
+    "mode": "automatic",
+    "url": "https://www.antennebureau.nl/plaatsing-antennes/aantal-antenne-installaties-voor-mobiele-communicatie",
+    "native_extensions": [".ods"],
+    "scope": "Official cellular-antenna ODS export; latest populated monthly worksheet only. WGS84 coordinates have a stated 15 m accuracy. No full Antenneregister map scraping."
+  },
+  "de_bnetza": {
+    "name": "Germany — BNetzA EMF sites",
+    "country": "DE",
+    "mode": "import",
+    "url": "https://www.bundesnetzagentur.de/DE/Fachthemen/Telekommunikation/Technik/EMF/start.html",
+    "scope": "Mapped CSV import only. Obtain a permitted site-location table from BNetzA or your authorized EMF portal access; map latitude, longitude, certificate/site ID and any available technical columns. Public EMF map has no verified unrestricted bulk export; detailed portal is restricted to competent authorities. Certificates can include planned installations. Do not import EMF measurement points as transmitters."
+  },
+  "pl_uke": {
+    "name": "Poland — UKE cellular permits",
+    "country": "PL",
+    "mode": "automatic",
+    "url": "https://bip.uke.gov.pl/pozwolenia-radiowe/wykaz-pozwolen-radiowych-tresci/stacje-gsm-umts-lte-5gnr-oraz-cdma,12,91.html",
+    "native_extensions": [".xlsx", ".zip"],
+    "scope": "All XLSX permit lists linked on the current UKE cellular page, including private networks. Authorization does not establish that a base station was built or operates. Nominal band labels are not treated as exact transmitting frequencies."
+  },
+  "cl_subtel": {
+    "name": "Chile — SUBTEL published antenna locations",
+    "country": "CL",
+    "mode": "automatic",
+    "url": "https://www.subtel.gob.cl/ubicacion-antenas-5g/",
+    "native_extensions": [".xlsx"],
+    "scope": "Published 2021 selected-band location workbook (700 MHz, AWS, 3.5 GHz and 26 GHz worksheets). Static publication; no assertion of current deployment or operation. Preserve worksheet band labels without inventing exact channel frequencies."
+  },
+  "global_ourairports": {
+    "name": "Worldwide — OurAirports navigation aids",
+    "country": "",
+    "mode": "automatic",
+    "url": "https://ourairports.com/data/",
+    "native_extensions": [".csv"],
+    "scope": "Worldwide VOR/NDB/DME/TACAN navigation transmitter records. Associated DME positions are retained separately. DME/TACAN paired VHF tuning frequencies remain in details, not RF frequency. Operating status is unverified.",
+    "license": "Public domain",
+    "attribution": "OurAirports — https://ourairports.com/data/"
+  },
+  "global_hfcc": {
+    "name": "Worldwide — HFCC shortwave schedules",
+    "country": "",
+    "mode": "automatic",
+    "url": "https://new.hfcc.org/data/",
+    "native_extensions": [".zip"],
+    "scope": "Latest published operational-season ZIP, with schedules joined to site.txt coordinates. Scheduled records are not observations of operation. Administration codes remain in details; physical country is unspecified.",
+    "options": [
+      {
+        "key": "season",
+        "label": "Season (blank = latest published, e.g. A26)",
+        "default": ""
+      }
+    ],
+    "license": "HFCC public data; copyright retained",
+    "attribution": "HFCC — https://new.hfcc.org/data/"
+  },
+  "global_opencellid": {
+    "name": "Worldwide — OpenCellID estimated cells",
+    "country": "",
+    "mode": "configured",
+    "url": "https://opencellid.org/downloads/",
+    "native_extensions": [".csv", ".gz"],
+    "scope": "Estimated cellular positions go to candidates. Enter your API token and MCC(s), or import native CSV/CSV.GZ. Blank MCC downloads the full file. Exports cover observations from the last 18 months, not all towers. Refresh consumes provider download quota.",
+    "options": [
+      {
+        "key": "api_token",
+        "label": "OpenCellID API token",
+        "default": "",
+        "secret": true
+      },
+      {
+        "key": "mcc",
+        "label": "MCCs separated by commas (blank = worldwide)",
+        "default": ""
+      }
+    ],
+    "license": "CC BY-SA 4.0",
+    "attribution": "OpenCelliD Project is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License — https://opencellid.org/"
+  },
+  "global_osm": {
+    "name": "Worldwide — OpenStreetMap communication structures",
+    "country": "",
+    "mode": "configured",
+    "url": "https://wiki.openstreetmap.org/wiki/Tag:tower:type%3Dcommunication",
+    "native_extensions": [".json"],
+    "scope": "Communication towers/masts within a supplied regional bbox; structures go to candidates. Way/relation positions are bounding-box centers, not surveyed antenna positions. Import Overpass JSON for existing larger extracts. Public queries are capped at 25 square degrees.",
+    "options": [
+      {
+        "key": "bbox",
+        "label": "Bounding box: south,west,north,east",
+        "default": ""
+      }
+    ],
+    "license": "ODbL 1.0",
+    "attribution": "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright"
+  },
+  "global_satnogs": {
+    "name": "Worldwide — SatNOGS receiving ground stations",
+    "country": "",
+    "mode": "automatic",
+    "url": "https://network.satnogs.org/",
+    "native_extensions": [".json"],
+    "scope": "Participating satellite receiving ground stations, including offline/testing stations. Saved to receivers, not transmitters. Antenna frequency bands describe reception capability.",
+    "license": "CC BY-SA 4.0",
+    "attribution": "SatNOGS Network — https://network.satnogs.org/; https://docs.satnogs.org/projects/satnogs-network/en/stable/api.html"
+  },
+  "global_itu": {
+    "name": "Worldwide — ITU BR IFIC / MIFR authorized export",
+    "country": "",
+    "mode": "import",
+    "url": "https://www.itu.int/en/ITU-R/terrestrial/brific/Pages/default.aspx",
+    "scope": "Import an authorized flat CSV export using column mapping. ITU access/subscriptions and redistribution terms apply. Native BR IFIC databases and account login are not automated."
+  },
+  "global_cellmapper": {
+    "name": "Worldwide — CellMapper reference map",
+    "country": "",
+    "mode": "reference",
+    "url": "https://www.cellmapper.net/map",
+    "scope": "Reference link for visual inspection. No bulk download or scraper: a documented permitted open export was not verified. Adds no dataset records."
+  }
+}

@@ -282,7 +282,7 @@ internal sealed class InstallerForm : Form
                 message += Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, configurationWarnings.Select(w => "• " + w));
             if (configurationWarnings.Count != 0)
                 MessageBox.Show(this, message, "OpenView Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            if (_launchAfterInstall.Checked) StartInstalledLauncher(result.InstallDirectory);
+            if (_launchAfterInstall.Checked) await StartInstalledLauncherAsync(result.InstallDirectory);
             _closeWhenOperationEnds = true;
         }
         catch (OperationCanceledException)
@@ -359,13 +359,13 @@ internal sealed class InstallerForm : Form
         _replaceAisStream.Checked = false;
     }
 
-    private void LaunchClicked(object? sender, EventArgs eventArgs)
+    private async void LaunchClicked(object? sender, EventArgs eventArgs)
     {
         try
         {
             var directory = InstallerEngine.ValidateInstallDirectory(_installDirectory.Text);
             InstallerEngine.ValidateInstalledLayout(directory);
-            StartInstalledLauncher(directory);
+            await StartInstalledLauncherAsync(directory);
         }
         catch (Exception error)
         {
@@ -417,16 +417,22 @@ internal sealed class InstallerForm : Form
         _aisStreamKey.Enabled = idle && _replaceAisStream.Checked;
     }
 
-    private static void StartInstalledLauncher(string directory)
+    private static async Task StartInstalledLauncherAsync(string directory)
     {
-        var executable = Path.Combine(directory, InstallerEngine.InstalledExecutableName);
-        var start = new ProcessStartInfo(executable)
+        var node = await InstallerEngine.FindNodeAsync(CancellationToken.None);
+        _ = Process.Start(CreateLauncherStartInfo(directory, node));
+    }
+
+    internal static ProcessStartInfo CreateLauncherStartInfo(string directory, string node)
+    {
+        var start = new ProcessStartInfo(node)
         {
             UseShellExecute = true,
             WorkingDirectory = directory,
+            WindowStyle = ProcessWindowStyle.Minimized,
         };
-        start.ArgumentList.Add("--launch");
-        _ = Process.Start(start);
+        start.ArgumentList.Add(Path.Combine(directory, InstallerEngine.InstalledLauncherName));
+        return start;
     }
 
     private void SetBusy(bool busy)

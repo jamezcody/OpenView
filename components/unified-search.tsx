@@ -15,8 +15,10 @@ import {
 import { coverageManifest } from '@/lib/coverage-model';
 import {
   loadSearchFile,
+  localRadioSearch,
   parseSearchManifest,
   searchJson,
+  type SearchManifest,
 } from '@/lib/search-data';
 import { ageLabel } from '@/lib/model';
 import { CampingData, campRequest } from '@/lib/camping-data';
@@ -95,6 +97,14 @@ export function UnifiedSearch({
     }),
     [revision, setRevision] = useState(0),
     [started, setStarted] = useState(false);
+  const [localCatalog, setLocalCatalog] = useState<SearchManifest | null>(null);
+  const [localRadio, setLocalRadio] = useState({
+    query: '',
+    items: [] as SearchResult[],
+    total: 0,
+    error: '',
+    loading: false,
+  });
   const [online, setOnline] = useState<{
     query: string;
     items: SearchResult[];
@@ -131,6 +141,15 @@ export function UnifiedSearch({
     if (!started) return;
     const controller = new AbortController();
     setIndexState({ loading: true, errors: [] });
+    setPrepared({});
+    setLocalCatalog(null);
+    setLocalRadio({
+      query: '',
+      items: [],
+      total: 0,
+      error: '',
+      loading: false,
+    });
     void (async () => {
       const m = parseSearchManifest(
         await searchJson(
@@ -141,6 +160,10 @@ export function UnifiedSearch({
       );
       const results = await Promise.allSettled(
         m.files.map(async (f) => {
+          if (f.encoding === 'radio-sqlite-v1') {
+            if (!controller.signal.aborted) setLocalCatalog(m);
+            return;
+          }
           const index = await loadSearchFile(m, f, controller.signal);
           if (!controller.signal.aborted)
             setPrepared((p) => ({ ...p, [f.kind]: index }));
@@ -168,6 +191,38 @@ export function UnifiedSearch({
     });
     return () => controller.abort();
   }, [started, revision]);
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!open || !localCatalog) {
+      setLocalRadio({ query, items: [], total: 0, error: '', loading: false });
+      return;
+    }
+    setLocalRadio({ query, items: [], total: 0, error: '', loading: true });
+    const timer = setTimeout(() => {
+      void localRadioSearch(localCatalog, query, limit, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted)
+            setLocalRadio({ query, ...result, error: '', loading: false });
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted)
+            setLocalRadio({
+              query,
+              items: [],
+              total: 0,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Local radio search unavailable.',
+              loading: false,
+            });
+        });
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, open, localCatalog, limit]);
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
     const outside = (e: PointerEvent) => {
@@ -184,11 +239,12 @@ export function UnifiedSearch({
           prepared.radio || [],
           prepared.parks || [],
           coverageIndex,
+          indexSearch(localRadio.query === deferred ? localRadio.items : []),
         ],
         deferred,
         limit,
       ),
-    [currentIndex, prepared, coverageIndex, deferred, limit],
+    [currentIndex, prepared, coverageIndex, localRadio, deferred, limit],
   );
   const coordinate = useMemo(() => coordinateResult(query), [query]);
   const results = useMemo(() => {
@@ -201,6 +257,12 @@ export function UnifiedSearch({
       seen = new Set<string>();
     return candidates.filter((r) => !seen.has(r.id) && !!seen.add(r.id));
   }, [coordinate, online, camping, query, matches, deferred]);
+  const radioUnloadedCount =
+    localRadio.query === query
+      ? Math.max(0, localRadio.total - localRadio.items.length)
+      : 0;
+  const localTotal = matches.total + radioUnloadedCount;
+  const visibleLocalCount = matches.items.length;
   useEffect(() => setActive(-1), [results]);
   function change(value: string) {
     request.current?.abort();
@@ -371,14 +433,19 @@ export function UnifiedSearch({
             <output>
               {indexState.loading
                 ? 'Loading prepared radio and park search…'
-                : `${(prepared.radio?.length || 0).toLocaleString()} radio records · ${(prepared.parks?.length || 0).toLocaleString()} parks`}
-              {query && ` · ${matches.total.toLocaleString()} local matches`}
+                : `${(localCatalog?.files.find((f) => f.kind === 'radio')?.count || prepared.radio?.length || 0).toLocaleString()} radio records · ${(prepared.parks?.length || 0).toLocaleString()} parks`}
+              {localRadio.loading
+                ? ' · Searching radio records…'
+                : query && ` · ${localTotal.toLocaleString()} local matches`}
               {online.loading ? ' · Searching places…' : ''}
             </output>
           </p>
-          {!!indexState.errors.length && (
+          {(!!indexState.errors.length || !!localRadio.error) && (
             <div className="search-errors">
-              {indexState.errors.map((e) => (
+              {[
+                ...indexState.errors,
+                ...(localRadio.error ? [localRadio.error] : []),
+              ].map((e) => (
                 <p key={e}>
                   <output>{e}</output>
                 </p>
@@ -447,24 +514,25 @@ export function UnifiedSearch({
             !results.length &&
             !indexState.loading &&
             !camping.loading &&
+            !localRadio.loading &&
             !online.loading && (
               <p className="search-help">
                 No loaded records match. Try a name, callsign, registration,
                 NORAD/MMSI ID, street address, or coordinates.
               </p>
             )}
-          {matches.total > matches.items.length && limit < 500 && (
+          {localTotal > visibleLocalCount && limit < 500 && (
             <button
               className="search-more"
               onClick={() => setLimit((n) => Math.min(500, n + 60))}
             >
-              Show more map results ({matches.total.toLocaleString()} matches)
+              Show more map results ({localTotal.toLocaleString()} matches)
             </button>
           )}
-          {matches.total > 500 && limit === 500 && (
+          {localTotal > visibleLocalCount && limit === 500 && (
             <p className="search-help">
-              Showing the first 500 map matches. Add a city, country, frequency,
-              or ID to narrow the search.
+              Showing up to 500 map matches. Add a city, country, frequency, or
+              ID to narrow the search.
             </p>
           )}
           <details className="search-sources">

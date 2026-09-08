@@ -5,7 +5,10 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
-const arguments_ = process.argv.slice(2);
+const isMain =
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const arguments_ = isMain ? process.argv.slice(2) : [];
 const supportedOptions = new Set(['--generated']);
 const unsupportedOptions = arguments_.filter(
   (argument) => argument.startsWith('-') && !supportedOptions.has(argument),
@@ -59,6 +62,7 @@ const textExtensions = new Set([
   '.properties',
   '.props',
   '.ps1',
+  '.py',
   '.sh',
   '.sln',
   '.svg',
@@ -201,6 +205,84 @@ function matchesFor(pattern, line) {
   return line.matchAll(new RegExp(pattern.source, flags));
 }
 
+function isPublicRegulatoryAuthorization(projectRel, name, raw) {
+  // FCC LMS lkp_authorization_type.dat defines these public classifications:
+  // C = Construction Permit, L = License, S = Special Temporary Authority.
+  // This exception is for one field in prepared radio record pages only.
+  return (
+    name === 'authorization_type' &&
+    /^public\/radio\/versions\/radio-[a-f0-9]{20}\/records\/r[0-3]{0,12}-\d{4,}\.json$/.test(
+      projectRel,
+    ) &&
+    /^(?:[CLS]|"[CLS]"\s*,?)$/.test(raw.trim())
+  );
+}
+
+export function credentialFindingsForLine(
+  line,
+  {
+    projectRel = '',
+    extension = '',
+    environmentFile = false,
+    generatedOutput = false,
+  } = {},
+) {
+  const found = [];
+  for (const [rule, pattern] of rules)
+    for (const match of matchesFor(pattern, line))
+      if (!isAllowedMatch(projectRel, rule, match[0])) found.push(rule);
+
+  // Generated identifiers may be named key/token; their high-confidence
+  // token, key and URL checks above still run independently of assignments.
+  if (generatedOutput) return found;
+  quotedAssignmentPattern.lastIndex = 0;
+  for (
+    let match = quotedAssignmentPattern.exec(line);
+    match;
+    match = quotedAssignmentPattern.exec(line)
+  ) {
+    if (!isCredentialName(match[1])) continue;
+    const value = match[3].trim();
+    if (
+      !isSafeAssignedValue(value, match[1]) &&
+      !isPublicRegulatoryAuthorization(projectRel, match[1], value) &&
+      !isAllowedMatch(projectRel, 'non-placeholder secret assignment', value)
+    )
+      found.push('non-placeholder secret assignment');
+  }
+  if (environmentFile || configExtensions.has(extension)) {
+    const match = configAssignmentPattern.exec(line);
+    if (
+      match &&
+      isCredentialName(match[1]) &&
+      !isSafeAssignedValue(match[2], match[1]) &&
+      !isPublicRegulatoryAuthorization(projectRel, match[1], match[2]) &&
+      !isAllowedMatch(
+        projectRel,
+        'non-placeholder config secret assignment',
+        match[2].trim(),
+      )
+    )
+      found.push('non-placeholder config secret assignment');
+  }
+  connectionSecretPattern.lastIndex = 0;
+  for (
+    let match = connectionSecretPattern.exec(line);
+    match;
+    match = connectionSecretPattern.exec(line)
+  )
+    if (
+      !isSafeAssignedValue(match[1]) &&
+      !isAllowedMatch(
+        projectRel,
+        'credential-bearing connection string',
+        match[1].trim(),
+      )
+    )
+      found.push('credential-bearing connection string');
+  return found;
+}
+
 async function scanFile(path) {
   const rel = relative(scanRoot, path).split(sep).join('/');
   const projectRel = relative(projectRoot, path).split(sep).join('/');
@@ -231,61 +313,13 @@ async function scanFile(path) {
   let lineNumber = 0;
   for await (const line of lines) {
     lineNumber += 1;
-    for (const [rule, pattern] of rules)
-      for (const match of matchesFor(pattern, line))
-        if (!isAllowedMatch(projectRel, rule, match[0]))
-          report(path, lineNumber, rule);
-
-    // Minifiers routinely collapse unrelated identifiers into names such as
-    // `key` and `token`. Generated-output scans retain the high-confidence
-    // token/key/URL rules above and skip source-oriented assignment heuristics.
-    if (generatedOutput) continue;
-
-    quotedAssignmentPattern.lastIndex = 0;
-    for (
-      let match = quotedAssignmentPattern.exec(line);
-      match;
-      match = quotedAssignmentPattern.exec(line)
-    ) {
-      if (!isCredentialName(match[1])) continue;
-      const value = match[3].trim();
-      if (
-        !isSafeAssignedValue(value, match[1]) &&
-        !isAllowedMatch(projectRel, 'non-placeholder secret assignment', value)
-      )
-        report(path, lineNumber, 'non-placeholder secret assignment');
-    }
-
-    if (environmentFile || configExtensions.has(extension)) {
-      const match = configAssignmentPattern.exec(line);
-      if (
-        match &&
-        isCredentialName(match[1]) &&
-        !isSafeAssignedValue(match[2], match[1]) &&
-        !isAllowedMatch(
-          projectRel,
-          'non-placeholder config secret assignment',
-          match[2].trim(),
-        )
-      )
-        report(path, lineNumber, 'non-placeholder config secret assignment');
-    }
-
-    connectionSecretPattern.lastIndex = 0;
-    for (
-      let match = connectionSecretPattern.exec(line);
-      match;
-      match = connectionSecretPattern.exec(line)
-    )
-      if (
-        !isSafeAssignedValue(match[1]) &&
-        !isAllowedMatch(
-          projectRel,
-          'credential-bearing connection string',
-          match[1].trim(),
-        )
-      )
-        report(path, lineNumber, 'credential-bearing connection string');
+    for (const rule of credentialFindingsForLine(line, {
+      projectRel,
+      extension,
+      environmentFile,
+      generatedOutput,
+    }))
+      report(path, lineNumber, rule);
   }
 }
 
@@ -298,19 +332,21 @@ async function walk(directory) {
   }
 }
 
-await walk(scanRoot);
+if (isMain) {
+  await walk(scanRoot);
 
-if (findings.length) {
-  for (const finding of findings)
+  if (findings.length) {
+    for (const finding of findings)
+      console.error(
+        `${finding.path}${finding.line ? `:${finding.line}` : ''} [${finding.rule}]`,
+      );
     console.error(
-      `${finding.path}${finding.line ? `:${finding.line}` : ''} [${finding.rule}]`,
+      `Credential audit failed with ${findings.length} finding(s). Match values were intentionally suppressed.`,
     );
-  console.error(
-    `Credential audit failed with ${findings.length} finding(s). Match values were intentionally suppressed.`,
-  );
-  process.exitCode = 1;
-} else {
-  console.log(
-    `Credential audit passed: ${filesScanned.toLocaleString()} text files and ${bytesScanned.toLocaleString()} bytes scanned.`,
-  );
+    process.exitCode = 1;
+  } else {
+    console.log(
+      `Credential audit passed: ${filesScanned.toLocaleString()} text files and ${bytesScanned.toLocaleString()} bytes scanned.`,
+    );
+  }
 }

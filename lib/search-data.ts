@@ -1,14 +1,15 @@
 import { readBounded } from './bounded-fetch';
 import { indexSearch, type SearchResult } from './search-model';
-type SearchFile = {
+export type SearchFile = {
   kind: 'radio' | 'parks';
   file: string;
   bytes: number;
   sha256: string;
   count: number;
+  encoding?: 'radio-sqlite-v1';
 };
 export type SearchManifest = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   version: string;
   radioVersion: string;
   parkRelease: string;
@@ -20,7 +21,7 @@ export function parseSearchManifest(raw: unknown): SearchManifest {
   const m = raw as SearchManifest;
   if (
     !m ||
-    m.schemaVersion !== 1 ||
+    ![1, 2].includes(m.schemaVersion) ||
     !safeId(m.version) ||
     !safeId(m.radioVersion) ||
     !safeId(m.parkRelease) ||
@@ -30,19 +31,23 @@ export function parseSearchManifest(raw: unknown): SearchManifest {
     throw new Error('Invalid search catalog.');
   if (new Set(m.files.map((f) => f.kind)).size !== 2)
     throw new Error('Duplicate search files.');
-  for (const f of m.files)
+  for (const f of m.files) {
+    const local = m.schemaVersion === 2 && f.kind === 'radio';
     if (
       !['radio', 'parks'].includes(f.kind) ||
-      f.file !== `${f.kind}.json` ||
-      !Number.isInteger(f.bytes) ||
+      f.file !== (local ? 'radio.sqlite' : `${f.kind}.json`) ||
+      (local && f.encoding !== 'radio-sqlite-v1') ||
+      (!local && f.encoding !== undefined) ||
+      !Number.isSafeInteger(f.bytes) ||
       f.bytes < 2 ||
-      f.bytes > 12 * 1024 * 1024 ||
-      !Number.isInteger(f.count) ||
+      f.bytes > (local ? 8 * 1024 ** 3 : 12 * 1024 * 1024) ||
+      !Number.isSafeInteger(f.count) ||
       f.count < 1 ||
-      f.count > 100000 ||
+      (!local && f.count > 100000) ||
       !/^[a-f0-9]{64}$/.test(f.sha256)
     )
       throw new Error('Invalid search file descriptor.');
+  }
   return m;
 }
 export async function searchJson(
@@ -193,6 +198,8 @@ export async function loadSearchFile(
   f: SearchFile,
   signal: AbortSignal,
 ) {
+  if (f.encoding === 'radio-sqlite-v1')
+    throw new Error('Large radio search requires the local OpenView runtime.');
   const raw = await searchJson(
     `/search/${m.version}/${f.file}`,
     signal,
@@ -208,4 +215,86 @@ export async function loadSearchFile(
       f.kind === 'radio' ? m.radioVersion : m.parkRelease,
     ),
   );
+}
+
+export async function localRadioSearch(
+  manifest: SearchManifest,
+  query: string,
+  limit: number,
+  signal: AbortSignal,
+): Promise<{ items: SearchResult[]; total: number }> {
+  const descriptor = manifest.files.find((f) => f.kind === 'radio');
+  if (descriptor?.encoding !== 'radio-sqlite-v1')
+    throw new Error('The radio search catalog does not use local search.');
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+    radioVersion: manifest.radioVersion,
+    searchVersion: manifest.version,
+  });
+  let raw: {
+    items: SearchResult[];
+    total: number;
+    count: number;
+    radioVersion: string;
+  };
+  try {
+    raw = await searchJson(
+      `/local-search/radio?${params}`,
+      signal,
+      2 * 1024 ** 2,
+    );
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new Error(
+      `Local radio search unavailable. Use the installed OpenView runtime. ${error instanceof Error ? error.message : ''}`,
+    );
+  }
+  if (
+    !raw ||
+    !Array.isArray(raw.items) ||
+    raw.items.length > Math.min(500, limit) ||
+    !Number.isSafeInteger(raw.total) ||
+    raw.total < raw.items.length ||
+    raw.total > descriptor.count ||
+    raw.count !== descriptor.count ||
+    raw.radioVersion !== manifest.radioVersion
+  )
+    throw new Error(
+      'Radio search response differs from the current dataset. Refresh prepared search.',
+    );
+  const ids = new Set<string>();
+  for (const item of raw.items) {
+    if (
+      !item ||
+      item.target?.type !== 'radio' ||
+      !/^r[0-3]{0,12}$/.test(item.target.node) ||
+      !['transmitters', 'receivers', 'candidates'].includes(
+        item.target.category,
+      ) ||
+      !new RegExp(`^${item.target.category}:[a-f0-9]{64}$`).test(
+        item.target.recordId,
+      ) ||
+      item.id !== `radio:${item.target.recordId}` ||
+      ids.has(item.id) ||
+      item.release !== manifest.radioVersion ||
+      !['transmitter', 'receiver', 'radio-candidate'].includes(item.kind) ||
+      !['name', 'detail', 'terms', 'source', 'sourceUrl'].every(
+        (field) => typeof item[field as keyof SearchResult] === 'string',
+      ) ||
+      !item.name ||
+      item.lat === null ||
+      item.lon === null ||
+      !Number.isFinite(item.lat) ||
+      !Number.isFinite(item.lon) ||
+      Math.abs(item.lat) > 90 ||
+      Math.abs(item.lon) > 180 ||
+      !Number.isFinite(item.height) ||
+      item.height < 120 ||
+      item.height > 70000000
+    )
+      throw new Error('Invalid local radio search record.');
+    ids.add(item.id);
+  }
+  return { items: raw.items, total: raw.total };
 }

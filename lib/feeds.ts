@@ -192,7 +192,7 @@ export const readSpaceCsv = async (url: string) => {
         // CelesTrak's bulk CSV files are served as application/octet-stream.
         // Accept the transport type, then validate the bounded CSV contents.
         Accept: '*/*',
-        'User-Agent': 'OpenView/0.2.0',
+        'User-Agent': 'OpenView/0.2.2',
         'Accept-Encoding': 'gzip',
       },
       signal: AbortSignal.timeout(45000),

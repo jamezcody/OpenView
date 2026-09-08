@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the current v0.1.x release line. Reproduce a problem against the latest published release when practical.
+Security fixes are applied to the current v0.2.x release line. Reproduce a problem against the latest published release when practical.
 
 ## Report privately
 
@@ -12,7 +12,7 @@ Include the affected version and operating system, the smallest safe reproductio
 
 ## Security design
 
-- OpenView requires no runtime API key.
+- OpenView's core features require no runtime API key; the optional AISStream provider uses a personal key stored in Windows Credential Manager.
 - Runtime secrets are not embedded in browser code or generated assets.
 - Optional Windows refresh credentials are stored as current-user vault entries in Windows Credential Manager.
 - Endpoint overrides must use HTTPS and cannot contain user information, a query string, or a fragment.

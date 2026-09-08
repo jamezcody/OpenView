@@ -4,15 +4,18 @@ using System.Text.RegularExpressions;
 
 namespace OpenView.Setup;
 
-// Browser links open a loopback URL directly, without invoking our unsigned EXE.
+// Browser links open a loopback URL directly; launch links use the system Node runtime.
 // Only installer-owned links are migrated, refreshed, or removed.
 internal static class ShellShortcuts
 {
     internal const string LegacyBrowserFileName = "OpenView Browser.lnk";
     internal static string FileName(bool browser) => browser ? "OpenView Browser.url" : "OpenView.lnk";
     internal static string Arguments(bool browser) => browser ? "--browser" : "--launch";
+    internal static string LocalLauncherArguments(string installation) =>
+        $"\"{Path.Combine(Path.GetFullPath(installation), InstallerEngine.InstalledLauncherName)}\"";
 
-    internal static void Create(string desktop, string installation, bool browser, int port = AppSettings.DefaultPort)
+    internal static void Create(string desktop, string installation, bool browser, int port = AppSettings.DefaultPort,
+        string? nodeExecutable = null)
     {
         if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop))
             throw new InvalidOperationException("The Windows desktop directory is unavailable.");
@@ -25,15 +28,30 @@ internal static class ShellShortcuts
             return;
         }
         var executable = Path.Combine(Path.GetFullPath(installation), InstallerEngine.InstalledExecutableName);
+        if (nodeExecutable is not null)
+        {
+            nodeExecutable = Path.GetFullPath(nodeExecutable);
+            if (!File.Exists(nodeExecutable) || !string.Equals(Path.GetFileName(nodeExecutable), "node.exe", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The validated Node.js runtime is unavailable.");
+            InstallerEngine.ValidateRequiredFiles(installation, [InstallerEngine.InstalledLauncherName]);
+        }
         WithShortcut(path, shortcut =>
         {
-            if (File.Exists(path) && !Matches(shortcut, executable, browser))
-                throw new InvalidOperationException($"{FileName(browser)} already exists and belongs to another target; it was left unchanged.");
-            shortcut.TargetPath = executable;
-            shortcut.Arguments = Arguments(browser);
+            if (File.Exists(path))
+            {
+                // Keep an already-working local launcher, including its window
+                // preference and optional --no-browser argument, byte-for-byte.
+                var existingLocal = MatchesLocalLauncher(shortcut, installation);
+                if (existingLocal && File.Exists((string)shortcut.TargetPath)) return;
+                if (!existingLocal && !Matches(shortcut, executable, browser))
+                    throw new InvalidOperationException($"{FileName(browser)} already exists and belongs to another target; it was left unchanged.");
+            }
+            shortcut.TargetPath = nodeExecutable ?? executable;
+            shortcut.Arguments = nodeExecutable is null ? Arguments(browser) : LocalLauncherArguments(installation);
             shortcut.WorkingDirectory = installation;
-            shortcut.IconLocation = executable + ",0";
-            shortcut.Description = browser ? "Open OpenView in your default browser" : "Start the OpenView local server";
+            shortcut.IconLocation = Path.Combine(Path.GetFullPath(installation), "dist", "client", "OpenView.ico") + ",0";
+            shortcut.Description = "Start the OpenView local server";
+            if (nodeExecutable is not null) shortcut.WindowStyle = 7;
             InstallerEngine.EnsureNoReparsePointsThrough(path);
             shortcut.Save();
         });
@@ -53,7 +71,7 @@ internal static class ShellShortcuts
         if (!File.Exists(path)) return;
         var executable = Path.Combine(Path.GetFullPath(installation), InstallerEngine.InstalledExecutableName);
         var owned = false;
-        WithShortcut(path, shortcut => owned = Matches(shortcut, executable, browser));
+        WithShortcut(path, shortcut => owned = Matches(shortcut, executable, browser) || MatchesLocalLauncher(shortcut, installation));
         if (owned)
         {
             InstallerEngine.EnsureNoReparsePointsThrough(path);
@@ -64,6 +82,13 @@ internal static class ShellShortcuts
     private static bool Matches(dynamic shortcut, string executable, bool browser) =>
         string.Equals((string)shortcut.TargetPath, executable, StringComparison.OrdinalIgnoreCase)
         && (string)shortcut.Arguments == Arguments(browser);
+
+    private static bool MatchesLocalLauncher(dynamic shortcut, string installation)
+    {
+        var arguments = (string)shortcut.Arguments;
+        return string.Equals(Path.GetFileName((string)shortcut.TargetPath), "node.exe", StringComparison.OrdinalIgnoreCase)
+            && (arguments == LocalLauncherArguments(installation) || arguments == LocalLauncherArguments(installation) + " --no-browser");
+    }
 
     internal static string BrowserContent(string installation, int port)
     {

@@ -213,13 +213,37 @@ void test('radio spatial validation preserves dateline and poles and rejects tra
 void test('real radio release categories and exact aggregate counts survive prepared loading', async () => {
   const data = new RadioData(assetFetch),
     m = await data.manifest(signal());
-  assert.deepEqual(m.counts, {
-    transmitters: 30297,
-    candidates: 292,
-    receivers: 6190,
-  });
+  // Additive FCC snapshots must preserve the original selected sources.
+  const baselineCounts = {
+    fi_traficom: 3396,
+    pl_uke: 4,
+    cl_subtel: 9085,
+    global_ourairports: 14490,
+    global_hfcc: 3322,
+    global_osm: 292,
+    global_satnogs: 6190,
+  };
+  for (const [id, expected] of Object.entries(baselineCounts)) {
+    const source = m.sources.find((item) => item.id === id)!;
+    assert.equal(source.status, 'complete');
+    assert.equal(
+      ['transmitters', 'candidates', 'receivers'].reduce(
+        (total, category) => total + (source.counts?.[category] || 0),
+        0,
+      ),
+      expected,
+    );
+  }
+  assert.equal(m.counts.receivers, 6190);
   assert.equal(m.sources.length, 24);
-  assert.equal(m.sources.filter((s) => s.status === 'unselected').length, 17);
+  for (const category of ['transmitters', 'candidates', 'receivers'] as const)
+    assert.equal(
+      m.counts[category],
+      m.sources.reduce(
+        (total, source) => total + (source.counts?.[category] || 0),
+        0,
+      ),
+    );
   assert.throws(() =>
     validateRadioManifest({ ...m, counts: { ...m.counts, receivers: -1 } }),
   );
@@ -227,7 +251,7 @@ void test('real radio release categories and exact aggregate counts survive prep
   assert.equal(v.limited, false);
   assert.equal(
     v.markers.reduce((s, p) => s + p.count, 0),
-    36779,
+    Object.values(m.counts).reduce((total, count) => total + count, 0),
   );
   for (const category of ['transmitters', 'candidates', 'receivers'] as const)
     assert.equal(
@@ -241,19 +265,21 @@ void test('real radio release categories and exact aggregate counts survive prep
   );
   const unknown = await data.view(
     m,
-    world,
+    { west: -180, south: -90, east: -0.001, north: -0.001 },
     2,
     {
       ...DEFAULT_RADIO_FILTERS,
       categories: ['transmitters'],
+      source: 'cl_subtel',
       frequency: 'unknown',
     },
     signal(),
   );
   assert.equal(
     unknown.markers.reduce((s, p) => s + p.count, 0),
-    13184,
+    9085,
   );
+  assert.equal(unknown.limited, false);
 });
 void test('radio inspection paginates real identities without duplicates and keeps receivers separate', async () => {
   const data = new RadioData(assetFetch),

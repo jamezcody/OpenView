@@ -209,12 +209,26 @@ void test('real cell and previous radio releases remain independent and readable
   const radio = await new RadioData(fetcher).manifest(signal());
   const data = new RadioData(fetcher, '/cells'),
     cells = await data.manifest(signal());
-  assert.equal(radio.version, 'radio-42b565087e93ae452711');
-  assert.deepEqual(radio.counts, {
+  const previousRadio = validateRadioManifest(
+    JSON.parse(
+      await readFile(
+        resolve(
+          'public/radio/versions/radio-42b565087e93ae452711/manifest.json',
+        ),
+        'utf8',
+      ),
+    ),
+  );
+  assert.equal(previousRadio.version, 'radio-42b565087e93ae452711');
+  assert.deepEqual(previousRadio.counts, {
     transmitters: 30297,
     candidates: 292,
     receivers: 6190,
   });
+  assert.notEqual(radio.datasetKind, 'cell-locations');
+  assert.notEqual(radio.version, cells.version);
+  assert.ok(radio.counts.transmitters >= previousRadio.counts.transmitters);
+  assert.equal(radio.counts.receivers, previousRadio.counts.receivers);
   assert.equal(cells.datasetKind, 'cell-locations');
   assert.equal(cells.counts.candidates, 694839);
   const view = await data.view(

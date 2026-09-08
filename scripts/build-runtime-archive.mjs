@@ -15,10 +15,10 @@ import {
   assertChildPath,
   assertReleaseArchive,
   assertSameFileInventory,
-  collectRegularFiles,
   createDeterministicTarGzip,
   replaceFileSafely,
 } from './deterministic-archive.mjs';
+import { collectRuntimeFiles } from './runtime-archive-files.mjs';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const metadataPath = resolve(root, 'release/release-manifest.json');
@@ -70,6 +70,9 @@ const requiredBuildFiles = [
   'dist/server/wrangler.json',
   'dist/client/favicon.svg',
   'dist/local/server.mjs',
+  'dist/local/prepared-data.mjs',
+  'dist/local/radio-search.mjs',
+  'dist/local/radio-search-worker.mjs',
   'dist/local/ship-service.mjs',
   'dist/local/ais-credential.ps1',
 ];
@@ -170,70 +173,11 @@ try {
   );
   await runNpmCi(staging);
 
-  const dataRoots = new Set(metadata.dataDirectories);
-  async function collectRuntimeFiles() {
-    return [
-      ...(await collectRegularFiles(resolve(root, 'dist/local'), 'dist/local')),
-      ...(await collectRegularFiles(
-        resolve(root, 'dist/client'),
-        'dist/client',
-        {
-          exclude(path) {
-            const parts = path.split('/');
-            return (
-              parts.includes('.wrangler') ||
-              dataRoots.has(parts[2]) ||
-              parts[2]?.startsWith('.openview-data-')
-            );
-          },
-        },
-      )),
-      ...(await collectRegularFiles(
-        resolve(root, 'dist/server'),
-        'dist/server',
-        {
-          exclude(path) {
-            return path.split('/').includes('.wrangler');
-          },
-        },
-      )),
-      ...(await collectRegularFiles(
-        resolve(staging, 'node_modules'),
-        'node_modules',
-      )),
-    ];
-  }
-  const files = await collectRuntimeFiles();
-  const requiredArchiveFiles = [
-    'dist/local/server.mjs',
-    'dist/local/ship-service.mjs',
-    'dist/local/ship-model.mjs',
-    'dist/local/ship-policy.mjs',
-    'dist/local/ship-credential.mjs',
-    'dist/local/ais-credential.ps1',
-    'dist/server/index.js',
-    'dist/server/wrangler.json',
-    'dist/client/favicon.svg',
-    'node_modules/wrangler/bin/wrangler.js',
-    'node_modules/ws/package.json',
-    'node_modules/@cloudflare/workerd-windows-64/bin/workerd.exe',
-  ];
-  for (const path of requiredArchiveFiles)
-    if (!files.some((file) => file.archivePath === path))
-      throw new Error(`The runtime archive is missing ${path}.`);
-  if (
-    files.some(
-      (file) =>
-        file.archivePath.split('/').includes('.wrangler') ||
-        file.archivePath.split('/')[2]?.startsWith('.openview-data-') ||
-        metadata.dataDirectories.some((name) =>
-          file.archivePath.startsWith(`dist/client/${name}/`),
-        ),
-    )
-  )
-    throw new Error(
-      'The runtime archive includes local state or prepared data.',
-    );
+  const files = await collectRuntimeFiles(
+    root,
+    staging,
+    metadata.dataDirectories,
+  );
 
   await mkdir(artifactDirectory, { recursive: true });
   const result = await createDeterministicTarGzip({
@@ -243,7 +187,10 @@ try {
     maximumFileCount: archive.maximumFileCount,
     maximumUncompressedBytes: archive.maximumUncompressedBytes,
     async beforeCommit() {
-      assertSameFileInventory(files, await collectRuntimeFiles());
+      assertSameFileInventory(
+        files,
+        await collectRuntimeFiles(root, staging, metadata.dataDirectories),
+      );
     },
   });
   Object.assign(archive, result);

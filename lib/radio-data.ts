@@ -19,6 +19,15 @@ import {
 } from './radio-model';
 import type { Bounds } from './model';
 
+/** Frequency-free aggregates preserve every other filter but cannot answer frequency queries. */
+const summaryPages = (node: RadioNode, filters: RadioFilters): RadioFile[] =>
+  node.overviewPages !== undefined &&
+  filters.frequency === 'all' &&
+  filters.minMHz === '' &&
+  filters.maxMHz === ''
+    ? node.overviewPages
+    : node.summaryPages;
+
 export class RadioBudgetError extends Error {}
 export class RadioBudget {
   requests = 0;
@@ -259,7 +268,7 @@ export class RadioData {
             string,
             { count: number; lat: number; lon: number }
           >();
-          for (const f of n.summaryPages) {
+          for (const f of summaryPages(n, filters)) {
             const groups = (await this.page(
               manifest.version,
               f,
@@ -348,8 +357,9 @@ export class RadioInspection {
               (await this.data.node(this.version, task.node, signal, budget));
             task.metadata = n;
             let matches = false;
-            while (task.summaryIndex < n.summaryPages.length) {
-              const f = n.summaryPages[task.summaryIndex];
+            const summaries = summaryPages(n, this.filters);
+            while (task.summaryIndex < summaries.length) {
+              const f = summaries[task.summaryIndex];
               const groups = (await this.data.page(
                 this.version,
                 f,

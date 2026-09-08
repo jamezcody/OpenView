@@ -8,7 +8,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace OpenView.Setup;
@@ -39,6 +38,28 @@ internal static partial class InstallerEngine
     internal const string ProductId = "com.jamezcody.openview";
     internal const string MarkerName = "openview-install.json";
     internal const string InstalledExecutableName = "OpenView.exe";
+    internal const string InstalledLauncherName = "launch-local.mjs";
+    internal static readonly string[] RequiredRuntimeFiles =
+    [
+        InstalledLauncherName,
+        "dist/local/server.mjs",
+        "dist/local/prepared-data.mjs",
+        "dist/local/radio-search.mjs",
+        "dist/local/radio-search-worker.mjs",
+        "dist/local/ship-service.mjs",
+        "dist/local/ship-model.mjs",
+        "dist/local/ship-policy.mjs",
+        "dist/local/ship-credential.mjs",
+        "dist/local/ais-credential.ps1",
+        "dist/local/osm-manager.mjs",
+        "dist/local/osm-io.mjs",
+        "dist/local/osm-tools.mjs",
+        "dist/local/osm-profile.mjs",
+        "dist/server/wrangler.json",
+        "dist/client/favicon.svg",
+        "node_modules/wrangler/bin/wrangler.js",
+        "node_modules/ws/package.json",
+    ];
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenView";
     private const int CopyBufferBytes = 1024 * 1024;
 
@@ -101,7 +122,7 @@ internal static partial class InstallerEngine
         EnsureNoReparsePointsThrough(parent);
         EnsureFreeSpace(parent, manifest);
         await Task.Run(() => EnsureReplaceableTarget(target), cancellationToken);
-        _ = await FindNodeAsync(cancellationToken);
+        var node = await FindNodeAsync(cancellationToken);
 
         var operation = Path.Combine(parent, $".OpenView-operation-{Guid.NewGuid():N}");
         var runtimeArchive = Path.Combine(operation, manifest.RuntimeArchive.Name);
@@ -143,6 +164,7 @@ internal static partial class InstallerEngine
             }, cancellationToken);
 
             File.Copy(executable, Path.Combine(staging, InstalledExecutableName), false);
+            PreserveExistingLauncher(target, staging);
             WriteMarker(staging, manifest);
             ValidateInstalledLayout(staging);
 
@@ -173,12 +195,12 @@ internal static partial class InstallerEngine
                 progress.Report("Saving local configuration...");
                 try { await WriteSettingsAsync(settings, cancellationToken); }
                 catch (Exception error) { warnings.Add($"Configuration update warning: {error.Message}"); }
-                try { CreateStartMenuShortcut(target); }
+                try { CreateStartMenuShortcut(target, node); }
                 catch (Exception error) { warnings.Add($"The Start menu shortcut was not created: {error.Message}"); }
                 var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
                 if (options.DesktopLauncher)
                 {
-                    try { ShellShortcuts.Create(desktop, target, browser: false); }
+                    try { ShellShortcuts.Create(desktop, target, browser: false, nodeExecutable: node); }
                     catch (Exception error) { warnings.Add($"The desktop launcher shortcut was not created: {error.Message}"); }
                 }
                 if (options.DesktopBrowser)
@@ -329,7 +351,7 @@ internal static partial class InstallerEngine
         return full;
     }
 
-    private static void ValidateAcceptanceTarget(string target)
+    internal static void ValidateAcceptanceTarget(string target)
     {
         var temporaryRoot = Path.GetFullPath(Path.GetTempPath())
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -348,6 +370,8 @@ internal static partial class InstallerEngine
         ValidateOwnedInstallationStructure(target);
         var marker = ReadOwnedMarker(target);
         var manifest = ReleaseConfig.Current;
+        ValidateRequiredFiles(target, RequiredRuntimeFiles);
+        ValidateDataLayout(target, manifest, allowLegacy: false);
         if (marker.Version != manifest.Version
             || !HashesEqual(marker.ManifestSha256, ReleaseConfig.ManifestSha256)
             || !HashesEqual(marker.RuntimeArchiveSha256, manifest.RuntimeArchive.Sha256)
@@ -416,6 +440,19 @@ internal static partial class InstallerEngine
         if (LauncherForm.IsControllerActive())
             throw new InvalidOperationException(
                 "Close the OpenView controller before repairing or updating the installation.");
+        if (File.Exists(CombineUnderRoot(target, InstalledLauncherName)))
+            EnsureNodeLauncherStopped(target, LoadSettings().Port);
+    }
+
+    internal static void EnsureNodeLauncherStopped(string target, int savedPort)
+    {
+        if (!File.Exists(CombineUnderRoot(target, InstalledLauncherName))) return;
+        try { LauncherForm.RefuseOccupiedPort(savedPort); }
+        catch (InvalidOperationException error)
+        {
+            throw new InvalidOperationException(
+                $"Stop OpenView before repairing or updating this installation. Its saved local port {savedPort} is still occupied. No process was stopped or replaced.", error);
+        }
     }
 
     private static bool IsOwnedInstallation(string target)
@@ -436,7 +473,7 @@ internal static partial class InstallerEngine
         catch { return null; }
     }
 
-    private static void ValidateOwnedInstallationStructure(string target)
+    internal static void ValidateOwnedInstallationStructure(string target)
     {
         target = ValidateInstallDirectory(target);
         EnsureNoReparsePointsThrough(target);
@@ -448,8 +485,15 @@ internal static partial class InstallerEngine
             "dist/server/wrangler.json",
             "dist/client/favicon.svg",
             "node_modules/wrangler/bin/wrangler.js",
-            ..manifest.DataDirectories.Select(name => $"dist/client/{name}/latest.json"),
         ];
+        ValidateRequiredFiles(target, required);
+        // Old releases placed every dataset below client; locally updated copies
+        // may already have moved radio/search outside Wrangler's asset directory.
+        ValidateDataLayout(target, manifest, allowLegacy: true);
+    }
+
+    internal static void ValidateRequiredFiles(string target, IEnumerable<string> required)
+    {
         foreach (var relative in required)
         {
             var path = CombineUnderRoot(target, relative);
@@ -457,6 +501,81 @@ internal static partial class InstallerEngine
             if (!File.Exists(path))
                 throw new InvalidOperationException($"The OpenView installation is missing {relative}.");
         }
+    }
+
+    internal static string DatasetRelativeDirectory(string directory) =>
+        $"dist/{(directory is "radio" or "search" ? "prepared" : "client")}/{directory}";
+
+    internal static void ValidateDataLayout(string target, ReleaseManifest manifest, bool allowLegacy)
+    {
+        foreach (var directory in manifest.DataDirectories)
+        {
+            var relative = DatasetRelativeDirectory(directory);
+            var pointer = CombineUnderRoot(target, $"{relative}/latest.json");
+            EnsureNoReparsePointsThrough(pointer);
+            if (allowLegacy && !File.Exists(pointer)) relative = $"dist/client/{directory}";
+            ValidateRequiredFiles(target, [$"{relative}/latest.json"]);
+            if (!allowLegacy)
+            {
+                ValidateDatasetPointer(pointer, directory);
+                if (directory is "radio" or "search"
+                    && Directory.Exists(CombineUnderRoot(target, $"dist/client/{directory}")))
+                    throw new InvalidOperationException($"The {directory} dataset must be outside the client asset directory.");
+            }
+        }
+        if (!allowLegacy) ValidateLocalSearchLayout(target);
+    }
+
+    private static void ValidateLocalSearchLayout(string target)
+    {
+        using var radio = JsonDocument.Parse(File.ReadAllBytes(CombineUnderRoot(target, "dist/prepared/radio/latest.json")));
+        var radioVersion = radio.RootElement.TryGetProperty("version", out var radioValue)
+            && radioValue.ValueKind == JsonValueKind.String ? radioValue.GetString() : null;
+        if (radioVersion is null || !Regex.IsMatch(radioVersion, "^radio-[a-f0-9]{20}$", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException("The prepared radio snapshot version is invalid.");
+        ValidateRequiredFiles(target, [$"dist/prepared/radio/versions/{radioVersion}/manifest.json"]);
+
+        using var search = JsonDocument.Parse(File.ReadAllBytes(CombineUnderRoot(target, "dist/prepared/search/latest.json")));
+        var catalog = search.RootElement;
+        if (!catalog.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var schemaVersion) || schemaVersion != 2
+            || !catalog.TryGetProperty("version", out var versionValue) || versionValue.ValueKind != JsonValueKind.String
+            || versionValue.GetString() is not string version || !Regex.IsMatch(version, "^search-[a-f0-9]{20}$", RegexOptions.CultureInvariant)
+            || !catalog.TryGetProperty("radioVersion", out var expectedRadio) || expectedRadio.ValueKind != JsonValueKind.String
+            || expectedRadio.GetString() != radioVersion
+            || !catalog.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("The local radio search catalog does not match the radio snapshot.");
+        var databases = files.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "radio").ToArray();
+        if (databases.Length != 1)
+            throw new InvalidOperationException("The local radio search catalog must contain one SQLite database.");
+        var descriptor = databases[0];
+        if (!descriptor.TryGetProperty("file", out var file) || file.ValueKind != JsonValueKind.String || file.GetString() != "radio.sqlite"
+            || !descriptor.TryGetProperty("encoding", out var encoding) || encoding.ValueKind != JsonValueKind.String || encoding.GetString() != "radio-sqlite-v1"
+            || !descriptor.TryGetProperty("bytes", out var bytes) || bytes.ValueKind != JsonValueKind.Number || !bytes.TryGetInt64(out var length) || length is < 512 or > 8L * 1024 * 1024 * 1024
+            || !descriptor.TryGetProperty("sha256", out var hash) || hash.ValueKind != JsonValueKind.String || !ReleaseConfig.IsSha256(hash.GetString()!))
+            throw new InvalidOperationException("The local radio search database descriptor is invalid.");
+        var relative = $"dist/prepared/search/{version}/radio.sqlite";
+        ValidateRequiredFiles(target, [relative]);
+        var path = CombineUnderRoot(target, relative);
+        if (new FileInfo(path).Length != length)
+            throw new InvalidOperationException("The local radio search database size differs from its catalog.");
+        using var database = File.OpenRead(path);
+        Span<byte> header = stackalloc byte[16];
+        database.ReadExactly(header);
+        if (!header.SequenceEqual("SQLite format 3\0"u8))
+            throw new InvalidOperationException("The local radio search database header is invalid.");
+    }
+
+    internal static void PreserveExistingLauncher(string target, string staging)
+    {
+        var existing = CombineUnderRoot(target, InstalledLauncherName);
+        EnsureNoReparsePointsThrough(existing);
+        if (!File.Exists(existing)) return;
+        if (new FileInfo(existing).Length is < 1 or > 1024 * 1024)
+            throw new InvalidOperationException("The existing local launcher has an invalid size; it was left unchanged.");
+        var destination = CombineUnderRoot(staging, InstalledLauncherName);
+        EnsureNoReparsePointsThrough(destination);
+        File.Copy(existing, destination, overwrite: true);
     }
 
     private static void EnsureFreeSpace(string parent, ReleaseManifest manifest)
@@ -578,29 +697,16 @@ internal static partial class InstallerEngine
         var requiredAsDirectory = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var canonicalCasing = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var pointers = new HashSet<string>(StringComparer.Ordinal);
-        var requiredRuntime = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "dist/local/server.mjs",
-            "dist/local/ship-service.mjs",
-            "dist/local/ship-model.mjs",
-            "dist/local/ship-policy.mjs",
-            "dist/local/ship-credential.mjs",
-            "dist/local/ais-credential.ps1",
-            "dist/local/osm-manager.mjs",
-            "dist/local/osm-io.mjs",
-            "dist/local/osm-tools.mjs",
-            "dist/local/osm-profile.mjs",
-            "dist/server/wrangler.json",
-            "dist/client/favicon.svg",
-            "node_modules/wrangler/bin/wrangler.js",
-            "node_modules/ws/package.json",
-        };
+        var requiredRuntime = new HashSet<string>(RequiredRuntimeFiles, StringComparer.Ordinal);
         var probePath = "dist/client/" + manifest.RuntimeProbe.Path.TrimStart('/');
         var sawProbe = false;
         long fileCount = 0;
         long uncompressedBytes = 0;
         long entryCount = 0;
         var maximumEntries = checked(descriptor.MaximumFileCount * 2 + 4096);
+        // One transfer buffer serves the entire archive, including large SQLite
+        // entries. Allocating it for every small page creates enormous GC churn.
+        var copyBuffer = extractionRoot is null ? null : new byte[CopyBufferBytes];
 
         using var file = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.None,
             CopyBufferBytes, FileOptions.SequentialScan);
@@ -675,9 +781,9 @@ internal static partial class InstallerEngine
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    CopyBufferBytes, FileOptions.SequentialScan);
+                    1, FileOptions.SequentialScan);
                 CopyExactly(data, output, entry.Length, cancellationToken,
-                    kind == ArchiveKind.Runtime && name == probePath ? manifest.RuntimeProbe.Sha256 : null);
+                    kind == ArchiveKind.Runtime && name == probePath ? manifest.RuntimeProbe.Sha256 : null, copyBuffer!);
                 if (kind == ArchiveKind.Runtime && name == probePath) sawProbe = true;
             }
             else if (kind == ArchiveKind.Runtime && name == probePath)
@@ -881,7 +987,7 @@ internal static partial class InstallerEngine
             throw new InvalidOperationException($"{archiveName} contains a TAR header with an invalid checksum.");
     }
 
-    private static long ParseTarOctal(ReadOnlySpan<byte> field, string fieldName, string archiveName)
+    internal static long ParseTarOctal(ReadOnlySpan<byte> field, string fieldName, string archiveName)
     {
         var start = 0;
         while (start < field.Length && field[start] == (byte)' ') start++;
@@ -964,15 +1070,17 @@ internal static partial class InstallerEngine
         return string.Join('/', parts);
     }
 
-    private static void ValidateArchiveScope(string name, bool isFile, ArchiveKind kind, ReleaseManifest manifest)
+    internal static void ValidateArchiveScope(string name, bool isFile, ArchiveKind kind, ReleaseManifest manifest)
     {
         var segments = name.Split('/');
         if (kind == ArchiveKind.Runtime)
         {
+            if (isFile && name == InstalledLauncherName) return;
             if (segments[0] is not ("dist" or "node_modules") || (segments.Length == 1 && isFile))
                 throw new InvalidOperationException($"The runtime archive contains an unexpected path: {name}");
             foreach (var directory in manifest.DataDirectories)
-                if (name == $"dist/client/{directory}" || name.StartsWith($"dist/client/{directory}/", StringComparison.Ordinal))
+                if (name == $"dist/client/{directory}" || name.StartsWith($"dist/client/{directory}/", StringComparison.Ordinal)
+                    || name == $"dist/prepared/{directory}" || name.StartsWith($"dist/prepared/{directory}/", StringComparison.Ordinal))
                     throw new InvalidOperationException($"The runtime archive improperly contains dataset content: {name}");
             return;
         }
@@ -1006,11 +1114,10 @@ internal static partial class InstallerEngine
         canonicalCasing.Add(path, path);
     }
 
-    private static void CopyExactly(
-        Stream input, Stream output, long expectedLength, CancellationToken cancellationToken, string? expectedSha)
+    internal static void CopyExactly(
+        Stream input, Stream output, long expectedLength, CancellationToken cancellationToken, string? expectedSha, byte[] buffer)
     {
         using var hash = expectedSha is null ? null : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[CopyBufferBytes];
         long total = 0;
         while (total < expectedLength)
         {
@@ -1047,7 +1154,7 @@ internal static partial class InstallerEngine
             throw new InvalidOperationException(message);
     }
 
-    private static void MergeDataIntoRuntime(string dataRoot, string runtimeRoot, ReleaseManifest manifest)
+    internal static void MergeDataIntoRuntime(string dataRoot, string runtimeRoot, ReleaseManifest manifest)
     {
         var client = CombineUnderRoot(runtimeRoot, "dist/client");
         if (!Directory.Exists(client))
@@ -1055,9 +1162,12 @@ internal static partial class InstallerEngine
         foreach (var directory in manifest.DataDirectories)
         {
             var source = CombineUnderRoot(dataRoot, $"public/{directory}");
-            var destination = CombineUnderRoot(client, directory);
-            if (!Directory.Exists(source) || Directory.Exists(destination))
+            var destination = CombineUnderRoot(runtimeRoot, DatasetRelativeDirectory(directory));
+            if (!Directory.Exists(source) || Directory.Exists(destination) || File.Exists(destination))
                 throw new InvalidOperationException($"The {directory} dataset cannot be activated safely.");
+            EnsureNoReparsePointsThrough(source);
+            EnsureNoReparsePointsThrough(destination);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(source, destination);
             ValidateDatasetPointer(CombineUnderRoot(destination, "latest.json"), directory);
         }
@@ -1134,41 +1244,14 @@ internal static partial class InstallerEngine
         start.Environment["NO_COLOR"] = "1";
     }
 
-    private static void CreateStartMenuShortcut(string target)
+    private static void CreateStartMenuShortcut(string target, string node)
     {
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
             "Programs", "OpenView");
         EnsureNoReparsePointsThrough(directory);
         Directory.CreateDirectory(directory);
         EnsureNoReparsePointsThrough(directory);
-        var shortcutPath = Path.Combine(directory, "OpenView.lnk");
-        EnsureNoReparsePointsThrough(shortcutPath);
-        var shellType = Type.GetTypeFromProgID("WScript.Shell")
-            ?? throw new InvalidOperationException("Windows shortcut support is unavailable.");
-        object? shell = null;
-        object? shortcut = null;
-        try
-        {
-            shell = Activator.CreateInstance(shellType);
-            dynamic dynamicShell = shell
-                ?? throw new InvalidOperationException("Windows shortcut support could not start.");
-            shortcut = dynamicShell.CreateShortcut(shortcutPath);
-            dynamic dynamicShortcut = shortcut;
-            dynamicShortcut.TargetPath = Path.Combine(target, InstalledExecutableName);
-            dynamicShortcut.Arguments = "--launch";
-            dynamicShortcut.WorkingDirectory = target;
-            dynamicShortcut.IconLocation = Path.Combine(target, InstalledExecutableName) + ",0";
-            dynamicShortcut.Description = $"OpenView {ReleaseConfig.Current.Version}";
-            EnsureNoReparsePointsThrough(directory);
-            EnsureNoReparsePointsThrough(shortcutPath);
-            dynamicShortcut.Save();
-            EnsureNoReparsePointsThrough(shortcutPath);
-        }
-        finally
-        {
-            if (shortcut is not null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
-            if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
-        }
+        ShellShortcuts.Create(directory, target, browser: false, nodeExecutable: node);
     }
 
     private static void RegisterUninstaller(string target)

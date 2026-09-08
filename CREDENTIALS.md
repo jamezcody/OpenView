@@ -2,7 +2,7 @@
 
 Credential names in this document are identifiers, never credential values.
 
-v0.2.0 supports `AISSTREAM_API_KEY`, required for AISStream's ten-minute ship snapshots but optional for OpenView itself. Create your own key at [AISStream Account](https://aisstream.io/account), then check **Set AISStream key** in setup/settings and enter it in the masked field. Windows installs read it from `OpenView/AISStream` in Windows Credential Manager. The local Node collector alone uses the key; it is not passed to Vite, Wrangler, browser assets or runtime archives. Restart the server after changing it. `AISSTREAM_ENABLED=false` disables this provider in source runs. Digitraffic remains available without a key. See [Ship configuration](SHIPS.md).
+OpenView supports `AISSTREAM_API_KEY`, required for AISStream's ten-minute ship snapshots but optional for OpenView itself. Create your own key at [AISStream Account](https://aisstream.io/account), then check **Set AISStream key** in setup/settings and enter it in the masked field. Windows installs read it from `OpenView/AISStream` in Windows Credential Manager. The local Node collector alone uses the key; it is not passed to Vite, Wrangler, browser assets or runtime archives. Restart the server after changing it. `AISSTREAM_ENABLED=false` disables this provider in source runs. Digitraffic remains available without a key. See [Ship configuration](SHIPS.md).
 
 ## No key is required to run OpenView
 
@@ -18,7 +18,7 @@ The browser, Worker, included prepared datasets, base maps, and local fallback i
 | `FCC_API_TOKEN`        |                          No | Secret             | Separate offline FCC dataset acquisition                          |
 | `OPENCELLID_API_TOKEN` |                          No | Secret             | Separate offline OpenCellID acquisition                           |
 
-The acquisition tools are not included in this release. Prepared-data reload buttons only reread local release manifests; they never contact FCC or OpenCellID acquisition services.
+The supported FCC rebuild entry point in `tools/radio-data` accepts verified local archives and performs no network acquisition. The OpenCellID acquisition tools are not included. Prepared-data reload buttons only reread local release manifests; they never contact FCC or OpenCellID acquisition services.
 
 Links to third-party property portals may require those sites' own accounts. OpenView does not request, receive, or store those logins.
 

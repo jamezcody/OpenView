@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { RadioSites } from '@/hooks/use-radio-sites';
+import { radioAuthorization } from '@/lib/radio-authorization';
 import {
   RADIO_CATEGORIES,
   RADIO_COLORS,
@@ -370,6 +371,7 @@ function RecordDetails({
   radio: RadioSites;
 }) {
   const source = radio.manifest?.sources.find((s) => s.id === r.source);
+  const authorization = radioAuthorization(r, source);
   const fields: [string, unknown][] = r.cell
     ? [
         ['Source', 'OpenCellID · U.S. network-code exports'],
@@ -401,7 +403,12 @@ function RecordDetails({
         ['Source', source?.name || r.source],
         ['Source record', r.source_record_id],
         ['Operator', r.operator],
-        ['Callsign', r.call_sign],
+        [
+          r.source === 'global_ourairports'
+            ? 'Navigation-aid identifier'
+            : 'Callsign',
+          r.call_sign,
+        ],
         ['Service', r.service],
         ['Frequency', radioFrequency(r)],
         [
@@ -410,7 +417,6 @@ function RecordDetails({
             ? null
             : `${r.power_value} ${r.power_unit || '(unit unknown)'}`,
         ],
-        ['Licence', r.license_id],
         ['Recorded status', r.status],
         ['Expiration', r.expiration_date],
         ['Coordinates', `${r.lat}, ${r.lon} (latitude, longitude)`],
@@ -443,6 +449,28 @@ function RecordDetails({
           </div>
         ))}
       </dl>
+      {!r.cell && (
+        <section className="my-4" aria-label="License / authorization">
+          <h4 className="mb-2 font-semibold">License / authorization</h4>
+          {authorization.missingReason && <p>{authorization.missingReason}</p>}
+          {authorization.identifiers.length > 0 && (
+            <dl>
+              {authorization.identifiers.map(({ label, value }) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <p className="radio-note">{authorization.note}</p>
+          {authorization.sourceUrl && (
+            <a href={authorization.sourceUrl} target="_blank" rel="noreferrer">
+              View source information <ExternalLink size={12} />
+            </a>
+          )}
+        </section>
+      )}
       {r.details_json && Object.keys(r.details_json).length > 0 && (
         <details>
           <summary>Source details, dates & interpretation</summary>

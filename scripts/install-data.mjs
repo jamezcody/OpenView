@@ -555,7 +555,9 @@ try {
     const response = await fetch(archive.url, {
       headers: { 'user-agent': `OpenView-data-installer/${manifest.version}` },
       redirect: 'follow',
-      signal: AbortSignal.timeout(10 * 60 * 1000),
+      // The national FCC package is about 1.6 GB; allow slower connections
+      // while retaining a bounded download and all byte/checksum validation.
+      signal: AbortSignal.timeout(2 * 60 * 60 * 1000),
     });
     if (!response.ok || !response.body)
       throw new Error(`Data download failed with HTTP ${response.status}.`);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync, createReadStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import {
@@ -16,6 +16,8 @@ import {
   parseSearchItems,
   parseSearchManifest,
   searchJson,
+  localRadioSearch,
+  loadSearchFile,
 } from '../lib/search-data';
 import { validateAddress } from '../lib/property-inquiry';
 import { photonUrl, placeSearch } from '../lib/place-search';
@@ -284,7 +286,7 @@ void test('Photon overrides cannot carry credentials or opaque URL state', () =>
   ])
     assert.throws(() => photonUrl(endpoint, 'Yellowstone'), /endpoint/);
 });
-void test('installed search release matches complete radio and park snapshots, checksums and exact record locators', () => {
+void test('installed search release matches complete radio and park snapshots, checksums and exact record locators', async () => {
   const root = resolve(process.cwd(), 'public'),
     m = parseSearchManifest(
       JSON.parse(readFileSync(resolve(root, 'search/latest.json'), 'utf8')),
@@ -300,8 +302,53 @@ void test('installed search release matches complete radio and park snapshots, c
       .release,
   );
   const indexes = [];
+  const radioManifest = JSON.parse(
+    readFileSync(
+      resolve(root, 'radio/versions', m.radioVersion, 'manifest.json'),
+      'utf8',
+    ),
+  );
+  const radioCount = Object.values(
+    radioManifest.counts as Record<string, number>,
+  ).reduce((a, b) => a + b, 0);
   for (const f of m.files) {
-    const bytes = readFileSync(resolve(root, 'search', m.version, f.file));
+    const path = resolve(root, 'search', m.version, f.file);
+    if (f.encoding === 'radio-sqlite-v1') {
+      assert.equal(f.count, radioCount);
+      assert.equal(statSync(path).size, f.bytes);
+      const hash = createHash('sha256');
+      for await (const chunk of createReadStream(path)) hash.update(chunk);
+      assert.equal(hash.digest('hex'), f.sha256);
+      const { DatabaseSync } = await import('node:sqlite');
+      const db = new DatabaseSync(path, { readOnly: true });
+      try {
+        assert.equal(
+          db
+            .prepare("SELECT value FROM metadata WHERE key='radioVersion'")
+            .get()?.value,
+          m.radioVersion,
+        );
+        assert.equal(
+          Number(
+            db.prepare("SELECT value FROM metadata WHERE key='count'").get()
+              ?.value,
+          ),
+          f.count,
+        );
+        assert.ok(
+          db
+            .prepare(
+              "SELECT rowid FROM radio_search WHERE search_text LIKE '%yle%' LIMIT 1",
+            )
+            .get(),
+          'Original radio records remain searchable',
+        );
+      } finally {
+        db.close();
+      }
+      continue;
+    }
+    const bytes = readFileSync(path);
     assert.equal(bytes.length, f.bytes);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), f.sha256);
     const items = parseSearchItems(
@@ -313,7 +360,7 @@ void test('installed search release matches complete radio and park snapshots, c
     assert.equal(new Set(items.map((i) => i.id)).size, f.count);
     indexes.push(indexSearch(items));
     if (f.kind === 'radio') {
-      assert.equal(items.length, 36779);
+      assert.equal(items.length, radioCount);
       for (const i of items) {
         assert.equal(i.target.type, 'radio');
         if (i.target.type === 'radio')
@@ -343,8 +390,80 @@ void test('installed search release matches complete radio and park snapshots, c
   assert.ok(
     searchMatches(indexes, 'Jockey').items.some((i) => i.kind === 'state-park'),
   );
-  assert.ok(
-    searchMatches(indexes, 'Yle').items.some((i) => i.kind === 'transmitter'),
-  );
+  if (m.schemaVersion === 1)
+    assert.ok(
+      searchMatches(indexes, 'Yle').items.some((i) => i.kind === 'transmitter'),
+    );
   assert.throws(() => parseSearchManifest({ ...m, version: '../escape' }));
+});
+
+void test('large radio search never fetches SQLite and rejects stale results', async () => {
+  const manifest = parseSearchManifest({
+    schemaVersion: 2,
+    version: `search-${'a'.repeat(20)}`,
+    radioVersion: `radio-${'b'.repeat(20)}`,
+    parkRelease: `parks-${'c'.repeat(20)}`,
+    files: [
+      {
+        kind: 'radio',
+        file: 'radio.sqlite',
+        encoding: 'radio-sqlite-v1',
+        count: 200000,
+        bytes: 100000000,
+        sha256: 'd'.repeat(64),
+      },
+      {
+        kind: 'parks',
+        file: 'parks.json',
+        count: 1,
+        bytes: 1000,
+        sha256: 'e'.repeat(64),
+      },
+    ],
+  });
+  const old = globalThis.fetch;
+  try {
+    globalThis.fetch = async (input) => {
+      const url = fetchUrl(input);
+      assert.ok(url.startsWith('/local-search/radio?'));
+      assert.ok(!url.includes('.sqlite'));
+      return Response.json({
+        items: [],
+        total: 0,
+        count: 200000,
+        radioVersion: manifest.radioVersion,
+      });
+    };
+    assert.deepEqual(
+      await localRadioSearch(
+        manifest,
+        'WQ1234',
+        60,
+        new AbortController().signal,
+      ),
+      { items: [], total: 0 },
+    );
+    await assert.rejects(
+      loadSearchFile(manifest, manifest.files[0], new AbortController().signal),
+      /local OpenView runtime/,
+    );
+    globalThis.fetch = async () =>
+      Response.json({
+        items: [],
+        total: 0,
+        count: 200000,
+        radioVersion: 'radio-old',
+      });
+    await assert.rejects(
+      localRadioSearch(manifest, 'WQ1234', 60, new AbortController().signal),
+      /current dataset/,
+    );
+    globalThis.fetch = async () => new Response('Not found', { status: 404 });
+    await assert.rejects(
+      localRadioSearch(manifest, 'WQ1234', 60, new AbortController().signal),
+      /installed OpenView runtime/,
+    );
+  } finally {
+    globalThis.fetch = old;
+  }
 });

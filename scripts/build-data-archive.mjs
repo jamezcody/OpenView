@@ -6,10 +6,10 @@ import {
   assertChildPath,
   assertReleaseArchive,
   assertSameFileInventory,
-  collectRegularFiles,
   createDeterministicTarGzip,
   replaceFileSafely,
 } from './deterministic-archive.mjs';
+import { collectDataFiles } from './data-archive-files.mjs';
 
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const metadataPath = resolve(root, 'release/release-manifest.json');
@@ -31,25 +31,7 @@ assertReleaseArchive(metadata, archive, 'openview-data', 'data');
 assertChildPath(artifactDirectory, artifactRoot, 'artifact directory');
 assertChildPath(output, artifactDirectory, 'data-archive output path');
 
-async function collectDataFiles() {
-  const collected = [];
-  for (const name of directories) {
-    const directoryFiles = await collectRegularFiles(
-      resolve(root, 'public', name),
-      `public/${name}`,
-    );
-    if (
-      !directoryFiles.some(
-        (file) => file.archivePath === `public/${name}/latest.json`,
-      )
-    )
-      throw new Error(`The ${name} dataset has no latest.json pointer.`);
-    collected.push(...directoryFiles);
-  }
-  return collected;
-}
-
-const files = await collectDataFiles();
+const files = await collectDataFiles(root, directories);
 
 await mkdir(artifactDirectory, { recursive: true });
 const result = await createDeterministicTarGzip({
@@ -59,7 +41,7 @@ const result = await createDeterministicTarGzip({
   maximumFileCount: archive.maximumFileCount,
   maximumUncompressedBytes: archive.maximumUncompressedBytes,
   async beforeCommit() {
-    assertSameFileInventory(files, await collectDataFiles());
+    assertSameFileInventory(files, await collectDataFiles(root, directories));
   },
 });
 

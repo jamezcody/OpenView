@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenView.Setup;
 
@@ -45,6 +47,10 @@ internal static class SelfTest
         VerifyPortAvailability();
         VerifyBrandingAndShortcuts();
         VerifyCredentialBoundaries();
+        VerifyPreparedInstallationLayout();
+        VerifyLargeArchiveLimits();
+        VerifyAcceptanceTargetSafety();
+        VerifyArchiveCopyBoundaries();
 
         if (InstallerEngine.NormalizeArchivePath("./dist/client/favicon.svg", false) != "dist/client/favicon.svg")
             throw new InvalidOperationException("Archive-path normalization failed.");
@@ -90,10 +96,15 @@ internal static class SelfTest
             Directory.CreateDirectory(installation);
             var executable = Path.Combine(installation, InstallerEngine.InstalledExecutableName);
             File.WriteAllText(executable, "shortcut target fixture");
+            File.WriteAllText(Path.Combine(installation, InstallerEngine.InstalledLauncherName), "// launcher fixture");
+            var node = Path.Combine(temporary, "node.exe");
+            File.WriteAllText(node, "Node shortcut fixture; never executed");
+            var iconPath = Path.Combine(installation, "dist", "client", "OpenView.ico");
             foreach (var browser in new[] { false, true })
             {
-                ShellShortcuts.Create(temporary, installation, browser);
-                ShellShortcuts.Create(temporary, installation, browser);
+                ShellShortcuts.Create(temporary, installation, browser, nodeExecutable: node);
+                var beforeRefresh = File.ReadAllBytes(Path.Combine(temporary, ShellShortcuts.FileName(browser)));
+                ShellShortcuts.Create(temporary, installation, browser, nodeExecutable: node);
                 var path = Path.Combine(temporary, ShellShortcuts.FileName(browser));
                 ShellShortcuts.WithShortcut(path, shortcut =>
                 {
@@ -104,9 +115,10 @@ internal static class SelfTest
                             throw new InvalidOperationException("The browser shortcut does not open the direct local URL.");
                         return;
                     }
-                    if (!string.Equals((string)shortcut.TargetPath, executable, StringComparison.OrdinalIgnoreCase)
-                        || (string)shortcut.Arguments != ShellShortcuts.Arguments(browser)
-                        || !((string)shortcut.IconLocation).StartsWith(executable, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals((string)shortcut.TargetPath, node, StringComparison.OrdinalIgnoreCase)
+                        || (string)shortcut.Arguments != ShellShortcuts.LocalLauncherArguments(installation)
+                        || !((string)shortcut.IconLocation).StartsWith(iconPath, StringComparison.OrdinalIgnoreCase)
+                        || !beforeRefresh.SequenceEqual(File.ReadAllBytes(path)))
                         throw new InvalidOperationException("A desktop shortcut has an incorrect target, argument, or icon.");
                 });
                 ShellShortcuts.RemoveOwned(temporary, Path.Combine(temporary, "Another installation"), browser);
@@ -115,6 +127,39 @@ internal static class SelfTest
                 ShellShortcuts.RemoveOwned(temporary, installation, browser);
                 if (File.Exists(path)) throw new InvalidOperationException("An owned shortcut was not removed.");
             }
+            var launcherPath = Path.Combine(temporary, ShellShortcuts.FileName(false));
+            ShellShortcuts.WithShortcut(launcherPath, shortcut =>
+            {
+                shortcut.TargetPath = executable;
+                shortcut.Arguments = "--launch";
+                shortcut.Save();
+            });
+            ShellShortcuts.Create(temporary, installation, browser: false, nodeExecutable: node);
+            ShellShortcuts.WithShortcut(launcherPath, shortcut =>
+            {
+                if (!string.Equals((string)shortcut.TargetPath, node, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The old executable launcher was not migrated to Node.");
+                shortcut.Arguments = ShellShortcuts.LocalLauncherArguments(installation) + " --no-browser";
+                shortcut.WindowStyle = 1;
+                shortcut.Save();
+            });
+            var customizedLink = File.ReadAllBytes(launcherPath);
+            ShellShortcuts.Create(temporary, installation, browser: false, nodeExecutable: node);
+            if (!customizedLink.SequenceEqual(File.ReadAllBytes(launcherPath)))
+                throw new InvalidOperationException("The existing Node launcher link was modified.");
+            ShellShortcuts.RemoveOwned(temporary, installation, browser: false);
+            if (File.Exists(launcherPath)) throw new InvalidOperationException("The owned Node launcher link was not removed.");
+            ShellShortcuts.WithShortcut(launcherPath, shortcut =>
+            {
+                shortcut.TargetPath = node;
+                shortcut.Arguments = "\"" + Path.Combine(installation, "another-script.mjs") + "\"";
+                shortcut.Save();
+            });
+            var unrelatedNodeLink = File.ReadAllBytes(launcherPath);
+            ExpectFailure(() => ShellShortcuts.Create(temporary, installation, browser: false, nodeExecutable: node));
+            ShellShortcuts.RemoveOwned(temporary, installation, browser: false);
+            if (!unrelatedNodeLink.SequenceEqual(File.ReadAllBytes(launcherPath)))
+                throw new InvalidOperationException("An unrelated Node shortcut was modified or removed.");
             var browserPath = Path.Combine(temporary, ShellShortcuts.FileName(true));
             ShellShortcuts.RefreshBrowserIfOwned(temporary, installation, 8080);
             if (File.Exists(browserPath)) throw new InvalidOperationException("An unselected browser shortcut was created.");
@@ -163,6 +208,11 @@ internal static class SelfTest
             throw new InvalidOperationException("Legacy settings did not retain the default local port.");
 
         var expected = new AppSettings(photonUrl, 49152);
+        var companionStart = InstallerForm.CreateLauncherStartInfo(AppContext.BaseDirectory, "node.exe");
+        if (companionStart.FileName != "node.exe" || companionStart.ArgumentList.Count != 1
+            || companionStart.ArgumentList[0] != Path.Combine(AppContext.BaseDirectory, InstallerEngine.InstalledLauncherName)
+            || companionStart.WorkingDirectory != AppContext.BaseDirectory || !companionStart.UseShellExecute)
+            throw new InvalidOperationException("The setup launch action does not use the local Node companion.");
         var start = LauncherForm.CreateWorkerStartInfo(AppContext.BaseDirectory, "node.exe", expected);
         if (!start.ArgumentList[0].EndsWith(Path.Combine("dist", "local", "server.mjs"), StringComparison.Ordinal)
             || !start.ArgumentList.Contains("49152") || !start.ArgumentList.Contains("--photon-url")
@@ -195,6 +245,201 @@ internal static class SelfTest
         }) ExpectFailure(() => AppSettings.Parse(Encoding.UTF8.GetBytes(json)));
     }
 
+    private static void VerifyPreparedInstallationLayout()
+    {
+        var temporary = Directory.CreateTempSubdirectory("OpenView-Layout-Test-").FullName;
+        try
+        {
+            var manifest = ReleaseConfig.Current;
+            var runtime = Path.Combine(temporary, "runtime");
+            var data = Path.Combine(temporary, "data");
+            void Write(string root, string relative, string content)
+            {
+                var path = InstallerEngine.CombineUnderRoot(root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, content);
+            }
+            foreach (var required in InstallerEngine.RequiredRuntimeFiles) Write(runtime, required, "runtime fixture");
+            using (var listener = new TcpListener(IPAddress.Loopback, 0))
+            {
+                listener.Server.ExclusiveAddressUse = true;
+                listener.Start();
+                var occupiedPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                ExpectFailure(() => InstallerEngine.EnsureNodeLauncherStopped(runtime, occupiedPort));
+                if (!listener.Server.IsBound)
+                    throw new InvalidOperationException("The running-server upgrade check stopped an unrelated listener.");
+                listener.Stop();
+                InstallerEngine.EnsureNodeLauncherStopped(runtime, occupiedPort);
+            }
+            Write(runtime, InstallerEngine.InstalledExecutableName, "ownership fixture; never executed");
+            Write(runtime, InstallerEngine.MarkerName, JsonSerializer.Serialize(new InstallMarker
+            {
+                SchemaVersion = 1, ProductId = InstallerEngine.ProductId, Version = "0.2.0",
+                ManifestSha256 = new string('0', 64), RuntimeArchiveSha256 = new string('0', 64),
+                DataArchiveSha256 = new string('0', 64),
+            }));
+            foreach (var directory in manifest.DataDirectories) Write(data, $"public/{directory}/latest.json", "{\"schemaVersion\":1}");
+            const string radioVersion = "radio-0123456789abcdef0123";
+            const string searchVersion = "search-0123456789abcdef0123";
+            Write(data, "public/radio/latest.json", $$"""{"schemaVersion":1,"version":"{{radioVersion}}"}""");
+            Write(data, $"public/radio/versions/{radioVersion}/manifest.json", "{\"schemaVersion\":1}");
+            string SearchCatalog(string expectedRadio = radioVersion, long bytes = 512) => JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2, version = searchVersion, radioVersion = expectedRadio,
+                files = new[] { new { kind = "radio", file = "radio.sqlite", encoding = "radio-sqlite-v1", bytes, sha256 = new string('0', 64) } },
+            });
+            Write(data, "public/search/latest.json", SearchCatalog());
+            Write(data, $"public/search/{searchVersion}/radio.sqlite", "");
+            var databaseBytes = new byte[512];
+            "SQLite format 3\0"u8.CopyTo(databaseBytes);
+            File.WriteAllBytes(Path.Combine(data, "public", "search", searchVersion, "radio.sqlite"), databaseBytes);
+
+            InstallerEngine.MergeDataIntoRuntime(data, runtime, manifest);
+            InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false);
+            InstallerEngine.ValidateOwnedInstallationStructure(runtime);
+            foreach (var directory in manifest.DataDirectories)
+            {
+                var expected = $"dist/{(directory is "radio" or "search" ? "prepared" : "client")}/{directory}/latest.json";
+                if (!File.Exists(InstallerEngine.CombineUnderRoot(runtime, expected)))
+                    throw new InvalidOperationException($"The {directory} dataset was activated in the wrong directory.");
+            }
+            if (Directory.EnumerateFileSystemEntries(Path.Combine(data, "public")).Any())
+                throw new InvalidOperationException("Dataset activation left files behind.");
+
+            // Both original v0.2.0 and the locally migrated v0.2.0 remain owned.
+            foreach (var directory in new[] { "radio", "search" })
+                Directory.Move(Path.Combine(runtime, "dist", "prepared", directory), Path.Combine(runtime, "dist", "client", directory));
+            InstallerEngine.ValidateOwnedInstallationStructure(runtime);
+            ExpectFailure(() => InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false));
+            foreach (var directory in new[] { "radio", "search" })
+                Directory.Move(Path.Combine(runtime, "dist", "client", directory), Path.Combine(runtime, "dist", "prepared", directory));
+
+            var searchPointer = "dist/prepared/search/latest.json";
+            Write(runtime, searchPointer, SearchCatalog("radio-ffffffffffffffffffff"));
+            ExpectFailure(() => InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false));
+            Write(runtime, searchPointer, SearchCatalog(bytes: 6101401600L));
+            ExpectFailure(() => InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false));
+            Write(runtime, searchPointer, SearchCatalog());
+            var database = Path.Combine(runtime, "dist", "prepared", "search", searchVersion, "radio.sqlite");
+            File.WriteAllBytes(database, new byte[512]);
+            ExpectFailure(() => InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false));
+            File.WriteAllBytes(database, databaseBytes);
+            File.Move(database, database + ".held");
+            ExpectFailure(() => InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false));
+            File.Move(database + ".held", database);
+            InstallerEngine.ValidateDataLayout(runtime, manifest, allowLegacy: false);
+            foreach (var relative in new[] { InstallerEngine.InstalledLauncherName, "dist/local/prepared-data.mjs", "dist/local/radio-search.mjs", "dist/local/radio-search-worker.mjs" })
+            {
+                var path = InstallerEngine.CombineUnderRoot(runtime, relative);
+                File.Move(path, path + ".held");
+                ExpectFailure(() => InstallerEngine.ValidateRequiredFiles(runtime, InstallerEngine.RequiredRuntimeFiles));
+                File.Move(path + ".held", path);
+            }
+
+            var previous = Path.Combine(temporary, "previous");
+            const string customizedLauncher = "// existing working user launcher\r\n";
+            InstallerEngine.PreserveExistingLauncher(previous, runtime);
+            Write(previous, InstallerEngine.InstalledLauncherName, customizedLauncher);
+            InstallerEngine.PreserveExistingLauncher(previous, runtime);
+            if (File.ReadAllText(Path.Combine(runtime, InstallerEngine.InstalledLauncherName)) != customizedLauncher
+                || File.ReadAllText(Path.Combine(previous, InstallerEngine.InstalledLauncherName)) != customizedLauncher)
+                throw new InvalidOperationException("An upgrade did not preserve the existing local launcher.");
+
+            InstallerEngine.ValidateArchiveScope(InstallerEngine.InstalledLauncherName, true, ArchiveKind.Runtime, manifest);
+            foreach (var unexpected in new[] { "other.mjs", "launch-local.mjs/child", "dist/client/radio/latest.json", "dist/prepared/radio/latest.json", "dist/prepared/search/radio.sqlite" })
+                ExpectFailure(() => InstallerEngine.ValidateArchiveScope(unexpected, true, ArchiveKind.Runtime, manifest));
+            ExpectFailure(() => InstallerEngine.ValidateArchiveScope(InstallerEngine.InstalledLauncherName, false, ArchiveKind.Runtime, manifest));
+        }
+        finally
+        {
+            if (!InstallerEngine.TrySafeDeleteDirectory(temporary, out var error))
+                throw new IOException($"Prepared-layout test cleanup failed: {error}");
+        }
+    }
+
+    private static void VerifyLargeArchiveLimits()
+    {
+        var document = JsonSerializer.SerializeToNode(ReleaseConfig.Current)!;
+        var archive = document["DataArchive"]!;
+        archive["CompressedBytes"] = 1800000000L;
+        archive["MaximumCompressedBytes"] = 2L * 1024 * 1024 * 1024;
+        archive["FileCount"] = 450000L;
+        archive["MaximumFileCount"] = 500000L;
+        archive["UncompressedBytes"] = 15L * 1024 * 1024 * 1024;
+        archive["MaximumUncompressedBytes"] = 20L * 1024 * 1024 * 1024;
+        ReleaseConfig.Validate(document.Deserialize<ReleaseManifest>()!);
+        foreach (var (value, maximum) in new[]
+        {
+            ("CompressedBytes", "MaximumCompressedBytes"), ("FileCount", "MaximumFileCount"),
+            ("UncompressedBytes", "MaximumUncompressedBytes"),
+        })
+        {
+            var valid = archive[value]!.GetValue<long>();
+            archive[value] = archive[maximum]!.GetValue<long>() + 1;
+            ExpectFailure(() => ReleaseConfig.Validate(document.Deserialize<ReleaseManifest>()!));
+            archive[value] = valid;
+        }
+        const long databaseBytes = 6101401600L;
+        var field = Encoding.ASCII.GetBytes(Convert.ToString(databaseBytes, 8).PadLeft(11, '0') + '\0');
+        if (InstallerEngine.ParseTarOctal(field, "size", "large SQLite fixture") != databaseBytes)
+            throw new InvalidOperationException("The TAR reader truncated a SQLite file larger than 2 GiB.");
+    }
+
+    private static void VerifyAcceptanceTargetSafety()
+    {
+        // A rejected acceptance request must never remove an existing directory.
+        foreach (var prefix in new[] { "OpenView-Acceptance-", "OpenView-Unrelated-Test-" })
+        {
+            var existing = Directory.CreateTempSubdirectory(prefix).FullName;
+            try
+            {
+                var sentinel = Path.Combine(existing, "keep.txt");
+                File.WriteAllText(sentinel, "existing directory must survive");
+                ExpectFailure(() => RunAcceptanceAsync(existing).GetAwaiter().GetResult());
+                if (!File.Exists(sentinel) || File.ReadAllText(sentinel) != "existing directory must survive")
+                    throw new InvalidOperationException("A rejected acceptance request removed existing files.");
+            }
+            finally
+            {
+                if (!InstallerEngine.TrySafeDeleteDirectory(existing, out var error))
+                    throw new IOException($"Acceptance safety test cleanup failed: {error}");
+            }
+        }
+        var fresh = Path.Combine(Path.GetTempPath(), $"OpenView-Acceptance-{Guid.NewGuid():N}");
+        InstallerEngine.ValidateAcceptanceTarget(fresh);
+        if (Directory.Exists(fresh))
+            throw new InvalidOperationException("Acceptance path validation created a directory.");
+    }
+
+    private static void VerifyArchiveCopyBoundaries()
+    {
+        var buffer = new byte[4096];
+        // Reuse the same buffer across differently sized entries so neither
+        // stale tail bytes nor a preceding entry's hash can leak into the next.
+        foreach (var length in new[] { 9001, 17, 0, 8192 })
+        {
+            var payload = Enumerable.Range(0, length).Select(index => (byte)(index % 251)).ToArray();
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload));
+            using var input = new MemoryStream([..payload, 123]);
+            using var output = new MemoryStream();
+            InstallerEngine.CopyExactly(input, output, payload.Length, CancellationToken.None, hash, buffer);
+            if (!output.ToArray().SequenceEqual(payload) || input.ReadByte() != 123)
+                throw new InvalidOperationException("The archive copy crossed a declared entry boundary.");
+        }
+        ExpectFailure(() => InstallerEngine.CopyExactly(new MemoryStream([1, 2]), Stream.Null, 3,
+            CancellationToken.None, null, buffer));
+        ExpectFailure(() => InstallerEngine.CopyExactly(new MemoryStream([1, 2]), Stream.Null, 2,
+            CancellationToken.None, new string('0', 64), buffer));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        try
+        {
+            InstallerEngine.CopyExactly(new MemoryStream([1]), Stream.Null, 1, cancellation.Token, null, buffer);
+        }
+        catch (OperationCanceledException) { return; }
+        throw new InvalidOperationException("Archive extraction ignored cancellation.");
+    }
+
     private static void VerifyPortAvailability()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -209,12 +454,16 @@ internal static class SelfTest
     public static async Task<int> RunAcceptanceAsync(string target)
     {
         target = InstallerEngine.ValidateInstallDirectory(target);
+        // Reject existing/foreign targets before entering any cleanup scope.
+        InstallerEngine.ValidateAcceptanceTarget(target);
+        var installed = false;
         try
         {
             var result = await InstallerEngine.InstallAsync(
                 new InstallOptions(target, null, AcceptanceTest: true),
                 new Progress<string>(message => Console.Error.WriteLine(message)),
                 CancellationToken.None);
+            installed = true;
             if (result.Warnings.Count != 0)
                 throw new InvalidOperationException("The acceptance install produced unexpected warnings.");
             InstallerEngine.ValidateInstalledLayout(result.InstallDirectory);
@@ -222,9 +471,14 @@ internal static class SelfTest
         }
         finally
         {
-            if (Directory.Exists(target)
-                && !InstallerEngine.TrySafeDeleteDirectory(target, out var error))
-                throw new IOException($"The acceptance installation could not be cleaned up: {error}");
+            // InstallAsync owns rollback on failure. Only remove a target after
+            // that call completed successfully and its current layout is owned.
+            if (installed && Directory.Exists(target))
+            {
+                InstallerEngine.ValidateInstalledLayout(target);
+                if (!InstallerEngine.TrySafeDeleteDirectory(target, out var error))
+                    throw new IOException($"The acceptance installation could not be cleaned up: {error}");
+            }
         }
     }
 
